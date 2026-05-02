@@ -1,9 +1,19 @@
-"""Application settings. All knobs come from env vars with the LEHEN_ prefix.
+"""Application settings.
 
-Nested settings use the double-underscore separator, e.g.:
-    LEHEN_ARCADEDB__PASSWORD=...
-    LEHEN_KEYCLOAK__BASE_URL=...
-    LEHEN_CRYPTO__MASTER_KEY=...
+The ``.env`` is intentionally minimal — only what the bootstrap process
+cannot function without:
+
+* ArcadeDB connection (host/password/database) — required to read any DB
+* Keycloak base URL + realm — required to validate any JWT
+* Crypto master key + audit pepper — required to decrypt persisted secrets
+  and HMAC the audit log
+
+Everything else (LLM provider, model names, model URLs, log level, retention
+windows, Keycloak audience/admin-role/client-ids) has a sensible default
+in code and/or lives in the DB-backed ``LLMConfig`` document, which the
+admin manages via ``/admin/*``. There is intentionally no shadow env knob
+for any of those — that's the source of the "did I edit it in env or in
+the admin UI?" confusion the v1 cleanup removed.
 """
 
 from __future__ import annotations
@@ -33,7 +43,6 @@ def _validate_url_safe_b64_32_bytes(value: SecretStr) -> SecretStr:
 class ArcadeDBSettings(BaseModel):
     host: str = "arcadedb"
     http_port: int = 2480
-    postgres_port: int = 5432
     user: str = "root"
     password: str
     database: str = "lehen"
@@ -42,22 +51,24 @@ class ArcadeDBSettings(BaseModel):
     def http_url(self) -> str:
         return f"http://{self.host}:{self.http_port}"
 
-    @property
-    def postgres_dsn(self) -> str:
-        return (
-            f"postgresql://{self.user}:{self.password}"
-            f"@{self.host}:{self.postgres_port}/{self.database}"
-        )
-
 
 class KeycloakSettings(BaseModel):
+    """Keycloak topology + the few values the bootstrap path needs.
+
+    ``base_url`` is required (no default) — without it the Hub cannot fetch
+    JWKS and therefore cannot validate any token. The remaining fields
+    (audience, admin role name, client ids, JWKS TTL) have stable defaults
+    that match this codebase's other expectations; override only when you
+    really mean it.
+    """
+
     base_url: str
     realm: str = "lehen"
     audience: str = "lehen-hub"
     admin_role: str = "lehen-admin"
-    jwks_ttl_seconds: int = 600
     edge_client_id: str = "lehen-edge"
     admin_ui_client_id: str = "lehen-admin-ui"
+    jwks_ttl_seconds: int = 600
 
     @property
     def issuer(self) -> str:
@@ -70,17 +81,6 @@ class KeycloakSettings(BaseModel):
     @property
     def jwks_url(self) -> str:
         return f"{self.issuer}/protocol/openid-connect/certs"
-
-
-class OllamaSettings(BaseModel):
-    """Network-topology config for Ollama. Model selections live in the DB-backed
-    LLMConfig (admin-mutable) — not here."""
-
-    base_url: str = "http://host.docker.internal:11434"
-
-    @property
-    def tags_url(self) -> str:
-        return f"{self.base_url.rstrip('/')}/api/tags"
 
 
 class CryptoSettings(BaseModel):
@@ -107,8 +107,15 @@ class CryptoSettings(BaseModel):
 
 
 class RetentionSettings(BaseModel):
-    """Per-event-type retention windows. v1 writes ``retain_until`` at insert time
-    using these defaults; cleanup task ships in v1.x (A11)."""
+    """Per-event-type retention windows.
+
+    Defaults live in code and are not surfaced in .env.example or the compose
+    file — retention is intended to move to admin-configured DB state when the
+    cleanup task ships (A11). For the rare case where a deployment needs a
+    different number before that, the env path
+    ``LEHEN_RETENTION__LOGIN_EVENT_DAYS`` / ``LEHEN_RETENTION__CONSENT_EVENT_DAYS``
+    still works (pydantic-settings nested env), but it's not advertised.
+    """
 
     login_event_days: int = 90
     consent_event_days: int = 2557  # ~7 years; legal-proof default for consent records
@@ -124,13 +131,13 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
+    # Stable defaults; not env-driven. Override at the entrypoint if needed.
     env: str = "dev"
     log_level: str = "INFO"
 
     arcadedb: ArcadeDBSettings
     keycloak: KeycloakSettings
     crypto: CryptoSettings
-    ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
 
 

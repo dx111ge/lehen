@@ -19,9 +19,6 @@ def test_ready_all_ok(client: TestClient) -> None:
     respx.get("http://test-keycloak:8080/realms/test-realm/.well-known/openid-configuration").mock(
         return_value=httpx.Response(200, json={"issuer": "http://test-keycloak:8080"})
     )
-    respx.get("http://test-ollama:11434/api/tags").mock(
-        return_value=httpx.Response(200, json={"models": []})
-    )
 
     response = client.get("/health/ready")
     assert response.status_code == 200
@@ -30,7 +27,6 @@ def test_ready_all_ok(client: TestClient) -> None:
     assert {k: v["status"] for k, v in body["checks"].items()} == {
         "arcadedb": "ok",
         "keycloak": "ok",
-        "ollama": "ok",
     }
 
 
@@ -40,9 +36,6 @@ def test_ready_503_when_any_check_fails(client: TestClient) -> None:
     respx.get("http://test-keycloak:8080/realms/test-realm/.well-known/openid-configuration").mock(
         side_effect=httpx.ConnectError("refused")
     )
-    respx.get("http://test-ollama:11434/api/tags").mock(
-        return_value=httpx.Response(200, json={"models": []})
-    )
 
     response = client.get("/health/ready")
     assert response.status_code == 503
@@ -50,4 +43,4 @@ def test_ready_503_when_any_check_fails(client: TestClient) -> None:
     assert body["status"] == "fail"
     assert body["checks"]["keycloak"]["status"] == "fail"
     assert body["checks"]["arcadedb"]["status"] == "ok"
-    assert body["checks"]["ollama"]["status"] == "ok"
+    assert "ollama" not in body["checks"]

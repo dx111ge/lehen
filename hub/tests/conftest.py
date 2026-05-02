@@ -17,12 +17,9 @@ def _b64_32_bytes() -> str:
 
 @pytest.fixture
 def app(monkeypatch: pytest.MonkeyPatch) -> Iterator[FastAPI]:
-    monkeypatch.setenv("LEHEN_ENV", "test")
-    monkeypatch.setenv("LEHEN_LOG_LEVEL", "WARNING")
     monkeypatch.setenv("LEHEN_ARCADEDB__PASSWORD", "test-password")
     monkeypatch.setenv("LEHEN_KEYCLOAK__BASE_URL", "http://test-keycloak:8080")
     monkeypatch.setenv("LEHEN_KEYCLOAK__REALM", "test-realm")
-    monkeypatch.setenv("LEHEN_OLLAMA__BASE_URL", "http://test-ollama:11434")
     monkeypatch.setenv("LEHEN_CRYPTO__MASTER_KEY", _b64_32_bytes())
     monkeypatch.setenv("LEHEN_CRYPTO__AUDIT_PEPPER", _b64_32_bytes())
 

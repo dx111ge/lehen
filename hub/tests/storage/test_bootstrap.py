@@ -10,7 +10,7 @@ import httpx
 import pytest
 import respx
 
-from lehen_hub.config import ArcadeDBSettings, OllamaSettings
+from lehen_hub.config import ArcadeDBSettings
 from lehen_hub.storage.arcade import ArcadeClient
 from lehen_hub.storage.bootstrap import ensure_admin_schema
 
@@ -25,11 +25,6 @@ def arcade_settings() -> ArcadeDBSettings:
         password="test-password",  # noqa: S106 — test fixture
         database="lehen-test",
     )
-
-
-@pytest.fixture
-def ollama_settings() -> OllamaSettings:
-    return OllamaSettings()  # defaults
 
 
 @pytest.fixture
@@ -68,7 +63,6 @@ def _mock_db_exists(exists: bool = True) -> None:
 @respx.mock
 async def test_first_boot_creates_all_types_and_seeds_llm(
     arcade_client: ArcadeClient,
-    ollama_settings: OllamaSettings,
 ) -> None:
     # DB exists (skip CREATE DATABASE branch); empty schema; empty LLMConfig
     _mock_db_exists(True)
@@ -83,9 +77,7 @@ async def test_first_boot_creates_all_types_and_seeds_llm(
     )
 
     created = await ensure_admin_schema(
-        arcade_client,
-        ollama=ollama_settings,
-        now=datetime(2026, 5, 2, tzinfo=UTC),
+        arcade_client, now=datetime(2026, 5, 2, tzinfo=UTC)
     )
 
     assert created == [
@@ -105,7 +97,6 @@ async def test_first_boot_creates_all_types_and_seeds_llm(
 @respx.mock
 async def test_second_boot_creates_nothing(
     arcade_client: ArcadeClient,
-    ollama_settings: OllamaSettings,
 ) -> None:
     _mock_db_exists(True)
     existing_types: list[dict[str, Any]] = [
@@ -127,7 +118,7 @@ async def test_second_boot_creates_nothing(
         return_value=httpx.Response(200, json={"result": []})
     )
 
-    created = await ensure_admin_schema(arcade_client, ollama=ollama_settings)
+    created = await ensure_admin_schema(arcade_client)
 
     assert created == []
     assert command_route.call_count == 0
@@ -136,7 +127,6 @@ async def test_second_boot_creates_nothing(
 @respx.mock
 async def test_partial_bootstrap_only_creates_missing(
     arcade_client: ArcadeClient,
-    ollama_settings: OllamaSettings,
 ) -> None:
     _mock_db_exists(True)
     # Schema has some types, missing ConsentEvent and LoginEvent
@@ -157,7 +147,7 @@ async def test_partial_bootstrap_only_creates_missing(
         return_value=httpx.Response(200, json={"result": []})
     )
 
-    created = await ensure_admin_schema(arcade_client, ollama=ollama_settings)
+    created = await ensure_admin_schema(arcade_client)
 
     assert created == ["ConsentEvent", "LoginEvent"]
     assert command_route.call_count == 2
@@ -166,11 +156,9 @@ async def test_partial_bootstrap_only_creates_missing(
 @respx.mock
 async def test_seed_uses_hardcoded_defaults(
     arcade_client: ArcadeClient,
-    ollama_settings: OllamaSettings,
 ) -> None:
-    """First-run seed uses the hardcoded model defaults from bootstrap.py;
-    no env-based override path exists (intentionally — A4 + the env-vs-DB
-    cleanup that removed AdminBootstrapSettings)."""
+    """First-run seed uses the hardcoded model + base-url defaults from
+    bootstrap.py; no env-based override path exists by design."""
     _mock_db_exists(True)
     respx.post(_expected_query_url()).mock(
         side_effect=[
@@ -198,7 +186,7 @@ async def test_seed_uses_hardcoded_defaults(
         return_value=httpx.Response(200, json={"result": []})
     )
 
-    await ensure_admin_schema(arcade_client, ollama=ollama_settings)
+    await ensure_admin_schema(arcade_client)
 
     # Only one command should fire — the LLMConfig seed
     assert command_route.call_count == 1
@@ -206,13 +194,13 @@ async def test_seed_uses_hardcoded_defaults(
     assert "INSERT INTO LLMConfig" in seed_call_body["command"]
     assert "gemma4:e4b" in seed_call_body["command"]
     assert "nomic-embed-text" in seed_call_body["command"]
+    assert "host.docker.internal:11434" in seed_call_body["command"]
     assert "system-bootstrap" in seed_call_body["command"]
 
 
 @respx.mock
 async def test_arcade_query_error_raises(
     arcade_client: ArcadeClient,
-    ollama_settings: OllamaSettings,
 ) -> None:
     from lehen_hub.storage.arcade import ArcadeQueryError
 
@@ -222,4 +210,4 @@ async def test_arcade_query_error_raises(
     )
 
     with pytest.raises(ArcadeQueryError, match="500"):
-        await ensure_admin_schema(arcade_client, ollama=ollama_settings)
+        await ensure_admin_schema(arcade_client)

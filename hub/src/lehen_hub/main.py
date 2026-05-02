@@ -67,7 +67,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         version=__version__,
         arcadedb_http=settings.arcadedb.http_url,
         keycloak_issuer=settings.keycloak.issuer,
-        ollama=settings.ollama.base_url,
     )
 
     # 1. Validate crypto keys (fail-closed if pydantic validators didn't catch).
@@ -97,7 +96,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 4. ArcadeDB client + idempotent admin schema bootstrap.
     arcade = ArcadeClient(settings=settings.arcadedb, http=http_client)
     app.state.arcade = arcade
-    created = await ensure_admin_schema(arcade, ollama=settings.ollama)
+    created = await ensure_admin_schema(arcade)
     log.info("hub.admin.bootstrap.completed", created_types=created)
 
     # 5. Service singletons.

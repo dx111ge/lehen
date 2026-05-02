@@ -1,7 +1,13 @@
 """Liveness + readiness probes.
 
-/health/live  — process is up. No deps. Cheap and always succeeds.
-/health/ready — pings ArcadeDB, Keycloak, Ollama in parallel; 503 if any fails.
+``/health/live``  — process is up. No deps. Cheap and always succeeds.
+``/health/ready`` — pings the bootstrap dependencies (ArcadeDB + Keycloak)
+                   in parallel; 503 if any fails.
+
+LLM provider health is not in this probe because the LLM provider is
+admin-configured in the DB-backed ``LLMConfig`` and is not a bootstrap
+dependency. A separate ``/admin/llm/health`` endpoint can ship later if
+operators want it surfaced.
 """
 
 from __future__ import annotations
@@ -50,16 +56,14 @@ async def ready(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, object]:
     async with httpx.AsyncClient() as client:
-        arcadedb, keycloak, ollama = await asyncio.gather(
+        arcadedb, keycloak = await asyncio.gather(
             _check_http(client, f"{settings.arcadedb.http_url}/api/v1/ready", (200, 204)),
             _check_http(client, settings.keycloak.well_known_url, (200,)),
-            _check_http(client, settings.ollama.tags_url, (200,)),
         )
 
     checks: dict[str, CheckResult] = {
         "arcadedb": arcadedb,
         "keycloak": keycloak,
-        "ollama": ollama,
     }
     all_ok = all(c["status"] == "ok" for c in checks.values())
     if not all_ok:
