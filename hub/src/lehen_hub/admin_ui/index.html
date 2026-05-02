@@ -27,13 +27,30 @@
 
         <section id="pane-llm" class="pane">
             <h2>LLM Provider</h2>
+            <p class="hint">Inference and embedding are configured independently.
+                Pick a provider on each side; the form adapts to the provider's
+                required fields. API keys are AES-256-GCM-encrypted at rest and
+                are never returned in plaintext after save.</p>
+
             <form id="llm-form">
-                <label>Inference provider <input name="inference_provider" /></label>
-                <label>Inference model <input name="inference_model" /></label>
-                <label>Inference base URL <input name="inference_base_url" /></label>
-                <label>Embedding provider <input name="embedding_provider" /></label>
-                <label>Embedding model <input name="embedding_model" /></label>
-                <label>Embedding base URL <input name="embedding_base_url" /></label>
+                <fieldset class="provider-side">
+                    <legend>Inference</legend>
+                    <label>Provider
+                        <select name="inference.provider" data-side="inference"></select>
+                    </label>
+                    <p class="provider-description" data-side="inference"></p>
+                    <div class="provider-fields" data-side="inference"></div>
+                </fieldset>
+
+                <fieldset class="provider-side">
+                    <legend>Embedding</legend>
+                    <label>Provider
+                        <select name="embedding.provider" data-side="embedding"></select>
+                    </label>
+                    <p class="provider-description" data-side="embedding"></p>
+                    <div class="provider-fields" data-side="embedding"></div>
+                </fieldset>
+
                 <button type="submit">Save</button>
             </form>
             <p class="meta" id="llm-meta"></p>

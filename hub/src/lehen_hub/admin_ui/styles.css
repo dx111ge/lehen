@@ -158,3 +158,54 @@ textarea {
     color: #555;
     white-space: pre-wrap;
 }
+
+fieldset.provider-side {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 1rem 1.25rem 1.25rem;
+    margin: 0 0 1.25rem;
+    background: #fff;
+}
+
+fieldset.provider-side legend {
+    padding: 0 0.5rem;
+    font-weight: 600;
+    color: #1a1a1a;
+}
+
+.provider-description {
+    color: #555;
+    font-size: 0.85rem;
+    border-left: 3px solid #d0d0d0;
+    padding-left: 0.6rem;
+    margin: 0.4rem 0 0.8rem;
+}
+
+.provider-description.warn {
+    border-left-color: #d97706;
+    color: #6b3a00;
+}
+
+.provider-fields .field-help {
+    color: #666;
+    font-size: 0.8rem;
+    margin: 0.15rem 0 0;
+}
+
+.provider-fields .secret-status {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.1rem 0.4rem;
+    background: #d4f5d4;
+    color: #1a5d1a;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-radius: 999px;
+}
+
+.provider-fields .secret-status.empty {
+    background: #fff3cd;
+    color: #6b5400;
+}

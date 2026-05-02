@@ -102,7 +102,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 5. Service singletons.
     admin_audit = AdminAuditService(arcade=arcade, audit_pepper=audit_pepper)
     app.state.admin_audit = admin_audit
-    app.state.llm_service = LLMService(arcade=arcade, audit=admin_audit)
+    app.state.llm_service = LLMService(
+        arcade=arcade, audit=admin_audit, master_key=master_key
+    )
     app.state.integrations_service = IntegrationsService(
         arcade=arcade, audit=admin_audit, master_key=master_key
     )

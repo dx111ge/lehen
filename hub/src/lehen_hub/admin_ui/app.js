@@ -139,27 +139,134 @@ function signOut() {
 // ---------- admin panes ------------------------------------------------------
 
 let _types = [];
+let _llmProviders = [];
+let _llmCurrent = null;
+
+function _providerById(id) {
+    return _llmProviders.find(p => p.id === id);
+}
+
+function renderProviderFields(side) {
+    const select = document.querySelector(`select[data-side="${side}"]`);
+    const targetWrap = document.querySelector(`.provider-fields[data-side="${side}"]`);
+    const descEl = document.querySelector(`.provider-description[data-side="${side}"]`);
+    const provider = _providerById(select.value);
+    targetWrap.innerHTML = "";
+    if (!provider) {
+        descEl.textContent = "";
+        return;
+    }
+    descEl.textContent = provider.description || "";
+    descEl.classList.toggle("warn", provider.id === "openai");
+    const sideState = (_llmCurrent && _llmCurrent[side]) || {};
+    for (const f of provider.fields) {
+        const wrap = document.createElement("label");
+        wrap.style.display = "block";
+        wrap.style.marginTop = "0.6rem";
+
+        const labelText = document.createElement("span");
+        labelText.textContent = f.label + (f.required ? " *" : "");
+        wrap.appendChild(labelText);
+
+        if (f.secret) {
+            const isSet = !!sideState[`${f.name}_set`];
+            const badge = document.createElement("span");
+            badge.className = "secret-status" + (isSet ? "" : " empty");
+            badge.textContent = isSet ? "value stored" : "not set";
+            wrap.appendChild(badge);
+        }
+
+        const input = document.createElement("input");
+        input.name = `${side}.${f.name}`;
+        input.dataset.side = side;
+        input.dataset.field = f.name;
+        input.dataset.secret = f.secret ? "1" : "0";
+        if (f.secret) {
+            input.type = "password";
+            input.placeholder = sideState[`${f.name}_set`]
+                ? "(leave empty to keep current; type a new value to replace; type only spaces to clear)"
+                : f.placeholder || "";
+        } else {
+            input.type = f.field_type === "url" ? "url" : "text";
+            if (f.placeholder) input.placeholder = f.placeholder;
+            if (sideState[f.name] !== undefined) input.value = sideState[f.name];
+        }
+        wrap.appendChild(input);
+
+        if (f.description) {
+            const help = document.createElement("p");
+            help.className = "field-help";
+            help.textContent = f.description;
+            wrap.appendChild(help);
+        }
+        targetWrap.appendChild(wrap);
+    }
+}
 
 async function loadLLMPane() {
-    const cfg = await fetchJSON("/admin/llm");
-    const form = document.getElementById("llm-form");
-    for (const k of Object.keys(cfg)) {
-        const input = form.elements[k];
-        if (input) input.value = cfg[k] || "";
+    if (!_llmProviders.length) {
+        _llmProviders = await fetchJSON("/admin/llm/providers");
     }
+    _llmCurrent = await fetchJSON("/admin/llm");
+
+    for (const side of ["inference", "embedding"]) {
+        const select = document.querySelector(`select[data-side="${side}"]`);
+        select.innerHTML = "";
+        for (const p of _llmProviders) {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            opt.textContent = p.display_name;
+            select.appendChild(opt);
+        }
+        const current = (_llmCurrent[side] && _llmCurrent[side].provider) || _llmProviders[0].id;
+        select.value = current;
+        select.onchange = () => renderProviderFields(side);
+        renderProviderFields(side);
+    }
+
     document.getElementById("llm-meta").textContent =
-        `Last updated by ${cfg.updated_by || "?"} at ${cfg.updated_at || "?"}`;
+        `Last updated by ${_llmCurrent.updated_by || "?"} at ${_llmCurrent.updated_at || "?"}`;
+}
+
+function _collectSidePayload(form, side) {
+    const provider = form.elements[`${side}.provider`].value;
+    const payload = { provider };
+    const sideState = (_llmCurrent && _llmCurrent[side]) || {};
+    const providerSpec = _providerById(provider);
+    if (!providerSpec) return payload;
+    for (const f of providerSpec.fields) {
+        const input = form.querySelector(`input[name="${side}.${f.name}"]`);
+        if (!input) continue;
+        const raw = input.value;
+        if (f.secret) {
+            // Only send if user actually typed something. If the field is left
+            // empty and the user already had a stored value, we keep it (omit
+            // from payload). To explicitly clear, the user types whitespace
+            // (we send empty string).
+            if (raw === "" && sideState[`${f.name}_set`]) {
+                continue;
+            }
+            if (raw.trim() === "" && raw !== "") {
+                payload[f.name] = "";  // explicit clear
+            } else if (raw !== "") {
+                payload[f.name] = raw;
+            }
+        } else if (raw !== "" || f.required) {
+            payload[f.name] = raw;
+        }
+    }
+    return payload;
 }
 
 async function saveLLM(ev) {
     ev.preventDefault();
     const form = ev.target;
-    const data = {};
-    for (const el of form.elements) {
-        if (el.name && el.value !== "") data[el.name] = el.value;
-    }
+    const body = {
+        inference: _collectSidePayload(form, "inference"),
+        embedding: _collectSidePayload(form, "embedding"),
+    };
     try {
-        await fetchJSON("/admin/llm", { method: "PUT", body: JSON.stringify(data) });
+        await fetchJSON("/admin/llm", { method: "PUT", body: JSON.stringify(body) });
         setStatus("LLM config saved");
         await loadLLMPane();
     } catch (e) {
