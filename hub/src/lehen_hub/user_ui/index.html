@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lehen</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <header>
+        <h1>Lehen</h1>
+        <div id="user-bar" class="hidden">
+            <span id="user-name"></span>
+            <button id="signout-btn" type="button">Sign out</button>
+        </div>
+    </header>
+
+    <main>
+        <div id="status-bar" class="status"></div>
+
+        <section id="me-section" class="hidden">
+            <h2>You are signed in as <span id="display-username"></span></h2>
+            <p>Active roles: <strong id="display-roles"></strong></p>
+
+            <h3>Available integrations</h3>
+            <p class="hint">Click <em>Connect</em> to grant Lehen access to a source. v1 records consent;
+                real adapters land in the next journey.</p>
+            <ul id="integration-list"></ul>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,121 @@
+# ---- Python (Hub) ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env
+.env.local
+.env.*.local
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Type checkers
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Tools
+.ipynb_checkpoints/
+*.ipynb
+
+# uv
+.uv/
+
+# ---- Rust (Edge) ----
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Tauri
+edge/src-tauri/target/
+edge/src-tauri/gen/
+edge/src-tauri/icons/icon.png.lock
+
+# ---- Frontend (inside Tauri) ----
+node_modules/
+.npm/
+.yarn/
+.pnp.*
+dist/
+build/
+.next/
+.svelte-kit/
+.solid/
+
+# ---- IDE / Editor ----
+.claude/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# ---- OS ----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ---- Lehen-specific ----
+# Local secrets and credentials
+secrets/
+*.pem
+*.key
+config.local.yaml
+
+# Local data and caches
+data/
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Docker volumes (local dev)
+ops/.docker-data/
+
+# Generated artifacts
+*.log
+logs/

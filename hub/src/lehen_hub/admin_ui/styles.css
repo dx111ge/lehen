@@ -1,0 +1,160 @@
+/* Bare-essentials styling. Replaced when Studio Phase 2 ships. */
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    color: #1a1a1a;
+    background: #fafafa;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 2rem;
+    background: #1a1a1a;
+    color: #fff;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+#user-bar button {
+    margin-left: 1rem;
+}
+
+main {
+    max-width: 1024px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.status {
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    background: #fffae5;
+    border: 1px solid #f0d97c;
+    font-size: 0.875rem;
+}
+
+.status.error {
+    background: #fde8e8;
+    border-color: #f88;
+    color: #8a0000;
+}
+
+.status:empty {
+    display: none;
+}
+
+nav#tabs {
+    display: flex;
+    gap: 0.5rem;
+    border-bottom: 2px solid #ddd;
+    margin-bottom: 1.5rem;
+}
+
+.tab {
+    padding: 0.5rem 1rem;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    font-size: 0.95rem;
+}
+
+.tab.active {
+    border-bottom-color: #1a1a1a;
+    font-weight: 600;
+}
+
+.pane.hidden, .hidden {
+    display: none;
+}
+
+form label {
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+form input, form select, form textarea {
+    display: block;
+    width: 100%;
+    margin-top: 0.25rem;
+    padding: 0.4rem;
+    font-size: 0.95rem;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+
+button {
+    padding: 0.4rem 1rem;
+    cursor: pointer;
+    border: 1px solid #1a1a1a;
+    background: #fff;
+    border-radius: 3px;
+    font-size: 0.95rem;
+}
+
+button[type=submit], button.primary {
+    background: #1a1a1a;
+    color: #fff;
+}
+
+button:hover {
+    opacity: 0.85;
+}
+
+.meta {
+    color: #666;
+    font-size: 0.85rem;
+}
+
+.error {
+    color: #8a0000;
+}
+
+.hint {
+    color: #666;
+    font-size: 0.875rem;
+    margin: 0 0 0.5rem;
+}
+
+ul, ol {
+    padding-left: 1.5rem;
+}
+
+li {
+    margin-bottom: 0.5rem;
+}
+
+textarea {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.9rem;
+}
+
+#audit-list li {
+    border-left: 3px solid #ddd;
+    padding-left: 0.75rem;
+    font-size: 0.875rem;
+    background: #fff;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.25rem;
+    border-radius: 0 3px 3px 0;
+}
+
+#audit-list li code {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: #555;
+    white-space: pre-wrap;
+}

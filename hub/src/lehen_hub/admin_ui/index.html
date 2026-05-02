@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lehen Admin</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <header>
+        <h1>Lehen Admin</h1>
+        <div id="user-bar" class="hidden">
+            <span id="user-name"></span>
+            <button id="signout-btn" type="button">Sign out</button>
+        </div>
+    </header>
+
+    <main>
+        <div id="status-bar" class="status"></div>
+
+        <nav id="tabs" class="hidden">
+            <button class="tab active" data-pane="llm">LLM</button>
+            <button class="tab" data-pane="integrations">Integrations</button>
+            <button class="tab" data-pane="siam">SIAM</button>
+            <button class="tab" data-pane="audit">Audit</button>
+        </nav>
+
+        <section id="pane-llm" class="pane">
+            <h2>LLM Provider</h2>
+            <form id="llm-form">
+                <label>Inference provider <input name="inference_provider" /></label>
+                <label>Inference model <input name="inference_model" /></label>
+                <label>Inference base URL <input name="inference_base_url" /></label>
+                <label>Embedding provider <input name="embedding_provider" /></label>
+                <label>Embedding model <input name="embedding_model" /></label>
+                <label>Embedding base URL <input name="embedding_base_url" /></label>
+                <button type="submit">Save</button>
+            </form>
+            <p class="meta" id="llm-meta"></p>
+        </section>
+
+        <section id="pane-integrations" class="pane hidden">
+            <h2>Integration Instances</h2>
+            <h3>Available types</h3>
+            <ul id="integration-types"></ul>
+            <h3>Configured instances</h3>
+            <ul id="integration-instances"></ul>
+            <h3>Add new instance</h3>
+            <form id="integration-create-form">
+                <label>ID <input name="id" required pattern="[a-z0-9-]+" /></label>
+                <label>Type
+                    <select name="type" id="integration-type-select" required></select>
+                </label>
+                <label>Display name <input name="display_name" required /></label>
+                <div id="integration-config-fields"></div>
+                <label><input type="checkbox" name="multi_connection_allowed" />
+                    Allow multiple connections per user</label>
+                <button type="submit">Create</button>
+            </form>
+        </section>
+
+        <section id="pane-siam" class="pane hidden">
+            <h2>SIAM Mapping</h2>
+            <p class="hint">role &rarr; allowed integration instance ids</p>
+            <textarea id="siam-textarea" rows="10" cols="60" spellcheck="false"></textarea>
+            <button id="siam-save-btn" type="button">Save</button>
+            <p class="meta" id="siam-meta"></p>
+        </section>
+
+        <section id="pane-audit" class="pane hidden">
+            <h2>Admin Audit (newest first)</h2>
+            <button id="audit-refresh-btn" type="button">Refresh</button>
+            <ol id="audit-list"></ol>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

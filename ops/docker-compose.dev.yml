@@ -1,0 +1,88 @@
+# Lehen — local development stack with hot reload.
+#
+# Usage (from repo root):
+#   cp ops/.env.example ops/.env       # then edit ops/.env
+#   docker compose -f ops/docker-compose.dev.yml --env-file ops/.env up --build
+#
+# Hot reload: edits in hub/src/** trigger uvicorn reload inside the hub container.
+# Keycloak runs externally on the LAN (see ops/.env). Ollama runs on the host.
+
+name: lehen-dev
+
+services:
+  hub:
+    build:
+      context: ../hub
+      dockerfile: Dockerfile
+      target: dev
+    image: lehen/hub:dev
+    container_name: lehen-hub-dev
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      LEHEN_ENV: dev
+      LEHEN_LOG_LEVEL: ${LEHEN_LOG_LEVEL:-DEBUG}
+      LEHEN_ARCADEDB__HOST: arcadedb
+      LEHEN_ARCADEDB__HTTP_PORT: "2480"
+      LEHEN_ARCADEDB__POSTGRES_PORT: "5432"
+      LEHEN_ARCADEDB__USER: root
+      LEHEN_ARCADEDB__PASSWORD: ${LEHEN_ARCADEDB__PASSWORD:?LEHEN_ARCADEDB__PASSWORD must be set in ops/.env}
+      LEHEN_ARCADEDB__DATABASE: ${LEHEN_ARCADEDB__DATABASE:-lehen}
+      LEHEN_KEYCLOAK__BASE_URL: ${LEHEN_KEYCLOAK__BASE_URL:?LEHEN_KEYCLOAK__BASE_URL must be set in ops/.env}
+      LEHEN_KEYCLOAK__REALM: ${LEHEN_KEYCLOAK__REALM:-lehen}
+      LEHEN_KEYCLOAK__AUDIENCE: ${LEHEN_KEYCLOAK__AUDIENCE:-lehen-hub}
+      LEHEN_KEYCLOAK__ADMIN_ROLE: ${LEHEN_KEYCLOAK__ADMIN_ROLE:-lehen-admin}
+      LEHEN_KEYCLOAK__EDGE_CLIENT_ID: ${LEHEN_KEYCLOAK__EDGE_CLIENT_ID:-lehen-edge}
+      LEHEN_KEYCLOAK__ADMIN_UI_CLIENT_ID: ${LEHEN_KEYCLOAK__ADMIN_UI_CLIENT_ID:-lehen-admin-ui}
+      LEHEN_KEYCLOAK__JWKS_TTL_SECONDS: ${LEHEN_KEYCLOAK__JWKS_TTL_SECONDS:-600}
+      LEHEN_OLLAMA__BASE_URL: ${LEHEN_OLLAMA__BASE_URL:-http://host.docker.internal:11434}
+      LEHEN_ADMIN_BOOTSTRAP__INFERENCE_MODEL: ${LEHEN_ADMIN_BOOTSTRAP__INFERENCE_MODEL:-gemma4:e4b}
+      LEHEN_ADMIN_BOOTSTRAP__EMBEDDING_MODEL: ${LEHEN_ADMIN_BOOTSTRAP__EMBEDDING_MODEL:-nomic-embed-text}
+      LEHEN_CRYPTO__MASTER_KEY: ${LEHEN_CRYPTO__MASTER_KEY:?LEHEN_CRYPTO__MASTER_KEY must be set in ops/.env}
+      LEHEN_CRYPTO__AUDIT_PEPPER: ${LEHEN_CRYPTO__AUDIT_PEPPER:?LEHEN_CRYPTO__AUDIT_PEPPER must be set in ops/.env}
+      LEHEN_RETENTION__LOGIN_EVENT_DAYS: ${LEHEN_RETENTION__LOGIN_EVENT_DAYS:-90}
+      LEHEN_RETENTION__CONSENT_EVENT_DAYS: ${LEHEN_RETENTION__CONSENT_EVENT_DAYS:-2557}
+    volumes:
+      - ../hub/src:/app/src:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      arcadedb:
+        condition: service_healthy
+    networks:
+      - lehen
+    restart: unless-stopped
+
+  arcadedb:
+    image: arcadedata/arcadedb:26.4.2
+    container_name: lehen-arcadedb-dev
+    environment:
+      # Database creation is delegated to the hub's bootstrap, which uses the
+      # server-admin path so root gets full permissions (ArcadeDB 26.x default
+      # policy denies schema updates for users created via defaultDatabases).
+      JAVA_OPTS: >-
+        -Darcadedb.server.rootPassword=${LEHEN_ARCADEDB__PASSWORD:?LEHEN_ARCADEDB__PASSWORD must be set in ops/.env}
+        -Darcadedb.server.mode=development
+    ports:
+      - "127.0.0.1:2480:2480"
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - arcadedb-data:/home/arcadedb/databases
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:2480/api/v1/ready >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+    networks:
+      - lehen
+    restart: unless-stopped
+
+volumes:
+  arcadedb-data:
+    name: lehen-arcadedb-data
+
+networks:
+  lehen:
+    name: lehen-dev
+    driver: bridge
