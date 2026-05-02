@@ -97,11 +97,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 4. ArcadeDB client + idempotent admin schema bootstrap.
     arcade = ArcadeClient(settings=settings.arcadedb, http=http_client)
     app.state.arcade = arcade
-    created = await ensure_admin_schema(
-        arcade,
-        bootstrap=settings.admin_bootstrap,
-        ollama=settings.ollama,
-    )
+    created = await ensure_admin_schema(arcade, ollama=settings.ollama)
     log.info("hub.admin.bootstrap.completed", created_types=created)
 
     # 5. Service singletons.

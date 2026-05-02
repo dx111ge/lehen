@@ -115,10 +115,3 @@ class TestRetentionDefaults:
         assert s.retention.login_event_days == 30
 
 
-class TestAdminBootstrapDefaults:
-    def test_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LEHEN_CRYPTO__MASTER_KEY", _b64_32_bytes())
-        monkeypatch.setenv("LEHEN_CRYPTO__AUDIT_PEPPER", _b64_32_bytes())
-        s = _build_settings(monkeypatch)
-        assert s.admin_bootstrap.inference_model == "gemma4:e4b"
-        assert s.admin_bootstrap.embedding_model == "nomic-embed-text"

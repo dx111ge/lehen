@@ -1,13 +1,17 @@
 """Idempotent admin-schema bootstrap.
 
 On every Hub startup:
-1. List existing document types in the configured database.
+1. Ensure the configured database exists (creating it via the server-admin
+   path so root has full schema permissions).
 2. Create any of the seven admin document types that don't exist yet.
-3. If ``LLMConfig`` is empty, seed the singleton row from
-   ``AdminBootstrapSettings`` + ``OllamaSettings``.
+3. If ``LLMConfig`` is empty, seed the singleton row with hardcoded first-run
+   defaults (``gemma4:e4b`` / ``nomic-embed-text``). After that, the admin
+   UI is the only place this gets edited.
 
-Returns the list of newly-created type names so the lifespan log can show
-``created_types=[...]`` for first-boot vs. subsequent-boot diagnostics.
+The first-run defaults are deliberately hardcoded rather than env-driven:
+the previous ``LEHEN_ADMIN_BOOTSTRAP__*`` env vars created a confusing
+appearance that ``.env`` was the live config when in fact the DB was the
+source of truth and the env values were ignored after the first boot.
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ from datetime import UTC, datetime
 
 import structlog
 
-from lehen_hub.config import AdminBootstrapSettings, OllamaSettings
+from lehen_hub.config import OllamaSettings
 from lehen_hub.storage.arcade import ArcadeClient
 
 _DOC_TYPES = (
@@ -30,11 +34,15 @@ _DOC_TYPES = (
     "LoginEvent",
 )
 
+# First-run defaults for LLMConfig. After the seed, the admin UI is the only
+# place these get changed; env vars never override the DB.
+_DEFAULT_INFERENCE_MODEL = "gemma4:e4b"
+_DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
+
 
 async def ensure_admin_schema(
     client: ArcadeClient,
     *,
-    bootstrap: AdminBootstrapSettings,
     ollama: OllamaSettings,
     now: datetime | None = None,
 ) -> list[str]:
@@ -64,8 +72,13 @@ async def ensure_admin_schema(
     log.info("hub.admin.bootstrap", created_types=created)
 
     if await _is_llm_config_empty(client):
-        await _seed_llm_config(client, bootstrap=bootstrap, ollama=ollama, now=now)
-        log.info("hub.admin.llm_config.seeded", base_url=ollama.base_url)
+        await _seed_llm_config(client, ollama=ollama, now=now)
+        log.info(
+            "hub.admin.llm_config.seeded",
+            base_url=ollama.base_url,
+            inference_model=_DEFAULT_INFERENCE_MODEL,
+            embedding_model=_DEFAULT_EMBEDDING_MODEL,
+        )
 
     return created
 
@@ -81,19 +94,19 @@ async def _is_llm_config_empty(client: ArcadeClient) -> bool:
 async def _seed_llm_config(
     client: ArcadeClient,
     *,
-    bootstrap: AdminBootstrapSettings,
     ollama: OllamaSettings,
     now: datetime,
 ) -> None:
     doc = {
         "id": "default",
         "inference_provider": "ollama",
-        "inference_model": bootstrap.inference_model,
+        "inference_model": _DEFAULT_INFERENCE_MODEL,
         "inference_base_url": ollama.base_url,
         "embedding_provider": "ollama",
-        "embedding_model": bootstrap.embedding_model,
+        "embedding_model": _DEFAULT_EMBEDDING_MODEL,
         "embedding_base_url": ollama.base_url,
         "updated_by": "system-bootstrap",
         "updated_at": now.isoformat(),
     }
+    # doc dict is fully constructed from validated input — JSON literal embed is safe.
     await client.command(f"INSERT INTO LLMConfig CONTENT {json.dumps(doc)}")

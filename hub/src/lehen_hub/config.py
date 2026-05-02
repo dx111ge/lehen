@@ -114,15 +114,6 @@ class RetentionSettings(BaseModel):
     consent_event_days: int = 2557  # ~7 years; legal-proof default for consent records
 
 
-class AdminBootstrapSettings(BaseModel):
-    """Fallback values used ONLY on first DB seed of LLMConfig. After bootstrap,
-    runtime values come from the DB (admin-mutable). Changing these env vars after
-    first boot has no effect."""
-
-    inference_model: str = "gemma4:e4b"
-    embedding_model: str = "nomic-embed-text"
-
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="LEHEN_",
@@ -141,7 +132,6 @@ class Settings(BaseSettings):
     crypto: CryptoSettings
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
-    admin_bootstrap: AdminBootstrapSettings = Field(default_factory=AdminBootstrapSettings)
 
 
 @lru_cache(maxsize=1)
