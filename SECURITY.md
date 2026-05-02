@@ -24,16 +24,11 @@ fixes.
 
 **Do not open a public GitHub issue for security-relevant findings.**
 
-Use one of these private channels in this order of preference:
-
-1. **GitHub Private Security Advisory** — open a draft at
-   <https://github.com/dx111ge/lehen/security/advisories/new>. This is the
-   recommended path; it gives us a private discussion thread, CVE
-   coordination, and a tracked timeline.
-2. **Encrypted email to the maintainer** — the maintainer's GitHub profile
-   (<https://github.com/dx111ge>) is the canonical contact. Include
-   "[lehen-security]" in the subject. PGP key fingerprint is published on
-   the GitHub profile if encrypted communication is needed.
+Use the **GitHub Private Security Advisory** channel — open a draft at
+<https://github.com/dx111ge/lehen/security/advisories/new>. This gives us a
+private discussion thread, optional CVE coordination, and a tracked
+timeline. It is currently the only supported reporting channel; the
+maintainer does not operate a separately-monitored security mailbox.
 
 Please include, where possible:
 
