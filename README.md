@@ -2,7 +2,7 @@
 
 > Open-source on-premise knowledge platform that binds knowledge to roles, not people — captured as a side effect of normal work across mail, Teams, and ITSM.
 
-**Status:** Phase 1 architecture defined, implementation not yet started. See [DESIGN.md](DESIGN.md) for the full architectural commitments.
+**Status:** Hub auth foundation and OAuth machinery are implemented and tested; Edge desktop client scaffold compiles and integrates with the Hub. The first end-to-end vertical slice against a real Microsoft Graph tenant is the active next step. See [DESIGN.md](DESIGN.md) for the architectural commitments and [docs/](docs/) for sprint-level design and operator docs.
 
 ---
 
@@ -26,16 +26,16 @@ Lehen detects these capture moments by triangulating across mail, Teams, and ITS
 +----------------------------+              +-----------------------+
 |  EDGE (per workstation)    |   filtered   |  HUB (on-premise)     |
 |                            |  knowledge   |                       |
-|  Tauri app, Windows MSI    |  -------->   |  Docker / K8s         |
-|  - Outlook COM connector   |   (no raw    |  - FastAPI server     |
-|  - Teams Graph connector   |    content)  |  - ArcadeDB           |
-|  - ITSM REST connector     |              |  - Ollama             |
-|  - Local KB cache          |              |  - Keycloak           |
-|  - Privacy filter          |              |                       |
+|  Tauri v2 + React          |  -------->   |  FastAPI + ArcadeDB   |
+|  - outlook-edge-com (COM)  |   (no raw    |  - outlook-graph      |
+|  - Local KB cache          |    content)  |  - teams-graph        |
+|  - Privacy filter          |              |  - itsm-rest-generic  |
+|                            |              |  - Ollama (LLM/embed) |
+|                            |              |  - Keycloak / Entra   |
 +----------------------------+              +-----------------------+
 ```
 
-Full architectural reasoning, plugin contracts, and decisions log are in [DESIGN.md](DESIGN.md).
+Source adapters split between Edge-local (Outlook COM on the workstation) and Hub-side (Microsoft Graph for Outlook + Teams, REST for ITSM). The split is not arbitrary — it follows where each source's auth boundary naturally sits. Full architectural reasoning, plugin contracts, and decisions log are in [DESIGN.md](DESIGN.md).
 
 ## Technology
 
@@ -43,26 +43,51 @@ Full architectural reasoning, plugin contracts, and decisions log are in [DESIGN
 |-------|--------|
 | Hub language | Python 3.12 + FastAPI |
 | Hub deployment | Docker Compose / Helm chart |
-| Edge language | Rust + Tauri v2 |
+| Edge language | Rust + Tauri v2 (edition 2024) |
+| Edge frontend | React 18 + Vite |
 | Edge platforms (v1) | Windows only |
 | Graph database | ArcadeDB (Postgres wire protocol) |
 | LLM / Embeddings | Ollama (default), swappable through plugin interfaces |
-| Identity | Keycloak (default), swappable through plugin interface |
+| Identity | Keycloak and Microsoft Entra ID — both first-class; other providers (Okta, Auth0, Ping, generic SAML) via the `IdentityProvider` plugin interface |
 
-## Quickstart
+## What's shipped today
 
-Implementation has not started. The repository currently contains architectural commitments only. A working Hub bring-up and Edge installer will follow in the first development sprint.
+This is an evolving project. As of the current commit:
 
-When implementation begins, the quickstart will be:
+**Hub (`hub/`)**
+- FastAPI server with admin CRUD for integration instances, SIAM role-to-instance mapping, encrypted-at-rest secret storage, and a tamper-evident admin audit trail.
+- `IdentityProvider` plugin interface with Keycloak and Microsoft Entra both as first-class implementations, switched by a single config field.
+- Local-admin bootstrap and break-glass auth path (argon2id, rate-limit, lockout, auto-disable on first SSO admin login). Strict surface separation: admin-issued JWTs only reach `/admin/*`.
+- Full OAuth-2 PKCE machinery for source adapters: HMAC-encrypted state, code exchange, refresh-once-then-stale, encrypted token storage, admin-action revoke cascade (instance disable/delete/SIAM mapping change), multi-mailbox-ready connection schema (`external_subject` + `display_label`).
+- `outlook-graph` source adapter (Microsoft Outlook via Graph API): authorization URL, code exchange, identity fetch from Graph `/me`, health probe.
+
+**Edge (`edge/`)**
+- Tauri v2 + React 18 desktop scaffold targeting Windows. Compiles cleanly (`npm run build` and `cargo check`).
+- OIDC PKCE Hub-login flow against Keycloak or Entra (whichever the Hub is configured for) — system-browser launch, deep-link callback, token exchange, OS-credential-store token storage.
+- Connect-flow wiring through the Hub's `/me/connections/{id}/initiate` and `/complete` endpoints.
+
+**Not yet end-to-end interactively tested**
+- A live login round-trip against a real Keycloak or Entra dev tenant.
+- A real Microsoft consent → Graph round-trip for `outlook-graph`.
+- The signed Windows MSI installer.
+
+These are the explicit next step (Sprint 2 Phase 4 — see `docs/sprint2_design.md`).
+
+## Quickstart (dev)
 
 ```bash
-# Hub
+# Hub — see docs/dev-setup.md for the full walkthrough (Keycloak + Entra)
 cd hub
-docker compose up
+uv sync
+uv run uvicorn lehen_hub.main:app --reload
 
-# Edge (Windows)
-# Install lehen-edge-setup.msi from the releases page
+# Edge (Windows) — runs in dev mode, points at a local Hub
+cd edge
+npm install
+npm run tauri:dev
 ```
+
+A signed MSI installer for end users ships with the first release after Sprint 2 Phase 4 completes.
 
 ## Contributing
 
