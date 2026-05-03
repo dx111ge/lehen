@@ -1,6 +1,7 @@
 """Hub auth: JWKS cache, JWT verification, FastAPI dependencies."""
 
 from lehen_hub.auth.dependencies import (
+    AdminUserDep,
     CurrentUser,
     CurrentUserDep,
     require_admin,
@@ -23,6 +24,7 @@ from lehen_hub.auth.local_jwt import (
 
 __all__ = [
     "LOCAL_ISSUER",
+    "AdminUserDep",
     "CurrentUser",
     "CurrentUserDep",
     "EntraIdentityProvider",

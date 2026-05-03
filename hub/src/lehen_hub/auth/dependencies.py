@@ -202,6 +202,10 @@ async def _verify_admin_surface_token(request: Request) -> CurrentUser:
 
 
 CurrentUserDep = Annotated[CurrentUser, Depends(_verify_user_surface_token)]
+"""User-surface auth (``/me/*``). Rejects Hub-self-issued JWTs.
+
+Do **not** use this on admin endpoints — local-admin tokens carry
+``iss=lehen-hub-local`` and will be rejected. Use ``AdminUserDep`` instead."""
 
 
 _RoleDep = Callable[[CurrentUser], Coroutine[Any, Any, CurrentUser]]
@@ -244,6 +248,15 @@ async def require_admin(
         # Successful SIAM admin login → run auto-disable check (idempotent).
         await _maybe_auto_disable_local_admin(request, siam_username=user.username)
     return user
+
+
+AdminUserDep = Annotated[CurrentUser, Depends(require_admin)]
+"""Admin-surface auth. Accepts SIAM-issued JWTs (with admin role claim) or
+Hub-self-issued JWTs (``iss=lehen-hub-local``, ``scope=admin``).
+
+Use this on every endpoint under ``/admin/*`` that needs the verified actor.
+``CurrentUserDep`` is for ``/me/*`` only and rejects local tokens by issuer
+claim — using it on admin endpoints fails 401 for local admins."""
 
 
 async def _maybe_auto_disable_local_admin(

@@ -76,8 +76,9 @@ nav#tabs {
     font-weight: 600;
 }
 
-.pane.hidden, .hidden {
-    display: none;
+/* Force-hide utility — must override id-level rules like ``nav#tabs``. */
+.hidden {
+    display: none !important;
 }
 
 form label {
@@ -208,4 +209,39 @@ fieldset.provider-side legend {
 .provider-fields .secret-status.empty {
     background: #fff3cd;
     color: #6b5400;
+}
+
+/* Login pane — SSO + local-admin side-by-side. */
+.login-pane {
+    max-width: 720px;
+}
+.login-options {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
+.login-option {
+    flex: 1 1 280px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    padding: 1rem 1.2rem;
+}
+.login-option legend {
+    font-weight: 600;
+    padding: 0 0.4rem;
+}
+.login-option label {
+    display: block;
+    margin: 0.6rem 0;
+}
+.login-option label input {
+    display: block;
+    width: 100%;
+    margin-top: 0.2rem;
+    padding: 0.4rem;
+    box-sizing: border-box;
+}
+.login-option button {
+    margin-top: 0.6rem;
 }

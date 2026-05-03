@@ -9,7 +9,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from lehen_hub.api.deps import RequestIdDep, SIAMServiceDep
-from lehen_hub.auth.dependencies import CurrentUserDep
+from lehen_hub.auth.dependencies import AdminUserDep
 
 router = APIRouter()
 
@@ -32,7 +32,7 @@ async def replace_siam(
     payload: SIAMMappingUpdate,
     siam: SIAMServiceDep,
     request_id: RequestIdDep,
-    user: CurrentUserDep,
+    user: AdminUserDep,
 ) -> dict[str, dict[str, list[str]]]:
     return {
         "mapping": await siam.replace(

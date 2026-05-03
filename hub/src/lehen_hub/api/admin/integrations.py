@@ -16,7 +16,7 @@ from lehen_hub.admin.integrations_service import (
     IntegrationInstanceNotFoundError,
 )
 from lehen_hub.api.deps import IntegrationsServiceDep, RequestIdDep
-from lehen_hub.auth.dependencies import CurrentUserDep
+from lehen_hub.auth.dependencies import AdminUserDep
 from lehen_hub.integrations.registry import INTEGRATION_TYPES
 
 router = APIRouter()
@@ -89,7 +89,7 @@ async def create_instance(
     payload: IntegrationInstanceCreate,
     integrations: IntegrationsServiceDep,
     request_id: RequestIdDep,
-    user: CurrentUserDep,
+    user: AdminUserDep,
 ) -> dict[str, Any]:
     try:
         return await integrations.create(
@@ -114,7 +114,7 @@ async def update_instance(
     payload: IntegrationInstanceUpdate,
     integrations: IntegrationsServiceDep,
     request_id: RequestIdDep,
-    user: CurrentUserDep,
+    user: AdminUserDep,
 ) -> dict[str, Any]:
     if not any(
         v is not None
@@ -153,7 +153,7 @@ async def delete_instance(
     instance_id: str,
     integrations: IntegrationsServiceDep,
     request_id: RequestIdDep,
-    user: CurrentUserDep,
+    user: AdminUserDep,
 ) -> None:
     try:
         await integrations.delete(actor=user, instance_id=instance_id, request_id=request_id)

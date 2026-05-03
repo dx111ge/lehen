@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from lehen_hub.admin.llm_service import LLMConfigError, LLMConfigNotFoundError
 from lehen_hub.api.deps import LLMServiceDep, RequestIdDep
-from lehen_hub.auth.dependencies import CurrentUserDep
+from lehen_hub.auth.dependencies import AdminUserDep
 from lehen_hub.llm.providers import LLM_PROVIDERS
 
 router = APIRouter()
@@ -95,7 +95,7 @@ async def update_llm(
     payload: LLMConfigUpdate,
     llm_service: LLMServiceDep,
     request_id: RequestIdDep,
-    user: CurrentUserDep,
+    user: AdminUserDep,
 ) -> dict[str, Any]:
     if payload.inference is None and payload.embedding is None:
         raise HTTPException(

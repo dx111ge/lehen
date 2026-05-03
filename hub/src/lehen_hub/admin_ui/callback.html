@@ -3,13 +3,17 @@
 <head>
     <meta charset="UTF-8" />
     <title>Lehen Admin — Signing in…</title>
-    <link rel="stylesheet" href="styles.css" />
+    <script>
+        document.write('<link rel="stylesheet" href="styles.css?v=' + Date.now() + '">');
+    </script>
 </head>
 <body>
     <main>
         <p>Signing in…</p>
         <p id="callback-error" class="error"></p>
     </main>
-    <script src="app.js"></script>
+    <script>
+        document.write('<script src="app.js?v=' + Date.now() + '"><\/script>');
+    </script>
 </body>
 </html>

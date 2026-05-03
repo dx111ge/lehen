@@ -1,6 +1,14 @@
-// Lehen Admin SPA. Vanilla JS, no build step. PKCE-OIDC against Keycloak.
-// Same code shape as user_ui/app.js — diverging only in (a) which client_id
-// to request and (b) which API surface to render.
+// Lehen Admin SPA. Vanilla JS, no build step.
+//
+// Two sign-in paths:
+//   1. SSO via the active SIAM IdP (Keycloak or Entra; the SPA picks the right
+//      client_id from /auth/public-config). Standard OIDC PKCE flow.
+//   2. Local admin bootstrap/break-glass (POST /admin/local-login). Surfaced
+//      so a fresh deployment can be configured before SSO works, and so an
+//      operator can recover after an SSO outage.
+//
+// Tokens land in sessionStorage either way; the rest of the SPA does not
+// know or care which path produced them.
 
 const SPA_ROLE = "admin";
 const REDIRECT_URI = window.location.origin + "/admin/callback.html";
@@ -63,8 +71,10 @@ async function loadAuthConfig() {
     return cfg;
 }
 
-async function loadKeycloakWellKnown(authConfig) {
-    const cacheKey = "lehen_kc_oidc";
+async function loadIdpWellKnown(authConfig) {
+    // OIDC discovery is identical across Keycloak and Entra at the protocol
+    // level; this cache is per-page-load and is provider-agnostic.
+    const cacheKey = "lehen_idp_oidc";
     const cached = sessionStorage.getItem(cacheKey);
     if (cached) return JSON.parse(cached);
     const wk = await (await fetch(authConfig.well_known_url)).json();
@@ -74,7 +84,7 @@ async function loadKeycloakWellKnown(authConfig) {
 
 async function startLogin() {
     const cfg = await loadAuthConfig();
-    const wk = await loadKeycloakWellKnown(cfg);
+    const wk = await loadIdpWellKnown(cfg);
     const verifier = randomVerifier();
     const challenge = b64urlEncode(await sha256(verifier));
     const state = randomVerifier();
@@ -104,7 +114,7 @@ async function handleCallback() {
     }
     const verifier = sessionStorage.getItem("lehen_pkce_verifier");
     const cfg = await loadAuthConfig();
-    const wk = await loadKeycloakWellKnown(cfg);
+    const wk = await loadIdpWellKnown(cfg);
     const body = new URLSearchParams({
         grant_type: "authorization_code",
         client_id: SPA_ROLE === "admin" ? cfg.admin_ui_client_id : cfg.edge_client_id,
@@ -134,6 +144,35 @@ async function handleCallback() {
 function signOut() {
     sessionStorage.clear();
     window.location.reload();
+}
+
+// ---------- local-admin login ------------------------------------------------
+
+async function localAdminLogin(username, password) {
+    // POST /admin/local-login is the one path on the admin surface that
+    // accepts unauthenticated POST. Vague 401 on every failure regardless of
+    // the actual reason — match the contract by displaying the server's
+    // detail verbatim and not trying to interpret it.
+    const r = await fetch("/admin/local-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+    });
+    const text = await r.text();
+    let body;
+    try {
+        body = text ? JSON.parse(text) : null;
+    } catch (e) {
+        body = text;
+    }
+    if (!r.ok) {
+        const detail = body && body.detail ? body.detail : (typeof body === "string" ? body : r.statusText);
+        const err = new Error(detail);
+        err.status = r.status;
+        throw err;
+    }
+    sessionStorage.setItem("lehen_access_token", body.access_token);
+    return body;
 }
 
 // ---------- admin panes ------------------------------------------------------
@@ -411,7 +450,71 @@ async function loadAuditPane() {
 function showApp() {
     document.getElementById("user-bar").classList.remove("hidden");
     document.getElementById("tabs").classList.remove("hidden");
-    document.querySelectorAll(".pane")[0].classList.remove("hidden");
+    const loginPane = document.getElementById("pane-login");
+    if (loginPane) loginPane.classList.add("hidden");
+    document.getElementById("pane-llm").classList.remove("hidden");
+}
+
+const PROVIDER_LABEL = { keycloak: "Keycloak", entra: "Microsoft Entra" };
+
+async function showLoginPane() {
+    const loginPane = document.getElementById("pane-login");
+    loginPane.classList.remove("hidden");
+    // Populate the SSO label from the active provider.
+    try {
+        const cfg = await loadAuthConfig();
+        const label = PROVIDER_LABEL[cfg.provider] || cfg.provider;
+        document.getElementById("sso-provider-label").textContent =
+            "Active provider: " + label;
+    } catch (e) {
+        document.getElementById("sso-provider-label").textContent =
+            "(could not reach Hub for provider config)";
+    }
+    document.getElementById("sso-login-btn").addEventListener("click", () => {
+        startLogin().catch((e) => setStatus(e.message, true));
+    });
+    document.getElementById("local-login-form").addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const errEl = document.getElementById("local-login-error");
+        errEl.textContent = "";
+        const form = ev.target;
+        const username = form.elements.username.value;
+        const password = form.elements.password.value;
+        try {
+            await localAdminLogin(username, password);
+            // Reload from /admin/ so init() runs the authenticated path.
+            window.location.replace("/admin/");
+        } catch (e) {
+            errEl.textContent = e.message || "authentication failed";
+        }
+    });
+}
+
+async function showAuthenticatedApp() {
+    const who = await fetchJSON("/admin/whoami");
+    const sourceLabel = who.identity_source === "lehen-hub-local"
+        ? " (local admin)"
+        : " (admin)";
+    document.getElementById("user-name").textContent = who.username + sourceLabel;
+    showApp();
+    await loadLLMPane();
+    document.getElementById("llm-form").addEventListener("submit", saveLLM);
+    document.getElementById("integration-create-form").addEventListener("submit", createIntegration);
+    document.getElementById("siam-save-btn").addEventListener("click", saveSiam);
+    document.getElementById("audit-refresh-btn").addEventListener("click", loadAuditPane);
+    document.getElementById("signout-btn").addEventListener("click", signOut);
+    for (const tab of document.querySelectorAll(".tab")) {
+        tab.addEventListener("click", () => {
+            for (const t of document.querySelectorAll(".tab")) t.classList.remove("active");
+            tab.classList.add("active");
+            for (const p of document.querySelectorAll(".pane")) p.classList.add("hidden");
+            const target = document.getElementById("pane-" + tab.dataset.pane);
+            target.classList.remove("hidden");
+            if (tab.dataset.pane === "integrations") loadIntegrationsPane();
+            if (tab.dataset.pane === "siam") loadSiamPane();
+            if (tab.dataset.pane === "audit") loadAuditPane();
+        });
+    }
 }
 
 async function init() {
@@ -420,35 +523,15 @@ async function init() {
         return;
     }
     if (!sessionStorage.getItem("lehen_access_token")) {
-        await startLogin();
+        await showLoginPane();
         return;
     }
     try {
-        const who = await fetchJSON("/admin/whoami");
-        document.getElementById("user-name").textContent = who.username + " (admin)";
-        showApp();
-        await loadLLMPane();
-        document.getElementById("llm-form").addEventListener("submit", saveLLM);
-        document.getElementById("integration-create-form").addEventListener("submit", createIntegration);
-        document.getElementById("siam-save-btn").addEventListener("click", saveSiam);
-        document.getElementById("audit-refresh-btn").addEventListener("click", loadAuditPane);
-        document.getElementById("signout-btn").addEventListener("click", signOut);
-        for (const tab of document.querySelectorAll(".tab")) {
-            tab.addEventListener("click", () => {
-                for (const t of document.querySelectorAll(".tab")) t.classList.remove("active");
-                tab.classList.add("active");
-                for (const p of document.querySelectorAll(".pane")) p.classList.add("hidden");
-                const target = document.getElementById("pane-" + tab.dataset.pane);
-                target.classList.remove("hidden");
-                if (tab.dataset.pane === "integrations") loadIntegrationsPane();
-                if (tab.dataset.pane === "siam") loadSiamPane();
-                if (tab.dataset.pane === "audit") loadAuditPane();
-            });
-        }
+        await showAuthenticatedApp();
     } catch (e) {
         if (e.status === 401) {
             sessionStorage.removeItem("lehen_access_token");
-            await startLogin();
+            await showLoginPane();
             return;
         }
         setStatus(e.message, true);

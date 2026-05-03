@@ -25,10 +25,21 @@ services:
       LEHEN_ARCADEDB__HOST: arcadedb
       LEHEN_ARCADEDB__PASSWORD: ${LEHEN_ARCADEDB__PASSWORD:?LEHEN_ARCADEDB__PASSWORD must be set in ops/.env}
       LEHEN_ARCADEDB__DATABASE: ${LEHEN_ARCADEDB__DATABASE:-lehen}
-      LEHEN_KEYCLOAK__BASE_URL: ${LEHEN_KEYCLOAK__BASE_URL:?LEHEN_KEYCLOAK__BASE_URL must be set in ops/.env}
+      # SIAM identity provider — Sprint 1.5 added Entra alongside Keycloak.
+      # Active provider is selected by LEHEN_IDENTITY_PROVIDER (default keycloak).
+      LEHEN_IDENTITY_PROVIDER: ${LEHEN_IDENTITY_PROVIDER:-keycloak}
+      LEHEN_KEYCLOAK__BASE_URL: ${LEHEN_KEYCLOAK__BASE_URL:-}
       LEHEN_KEYCLOAK__REALM: ${LEHEN_KEYCLOAK__REALM:-lehen}
+      LEHEN_ENTRA__TENANT_ID: ${LEHEN_ENTRA__TENANT_ID:-}
+      LEHEN_ENTRA__AUDIENCE: ${LEHEN_ENTRA__AUDIENCE:-}
+      LEHEN_ENTRA__ADMIN_ROLE: ${LEHEN_ENTRA__ADMIN_ROLE:-lehen-admin}
+      LEHEN_ENTRA__EDGE_CLIENT_ID: ${LEHEN_ENTRA__EDGE_CLIENT_ID:-}
+      LEHEN_ENTRA__ADMIN_UI_CLIENT_ID: ${LEHEN_ENTRA__ADMIN_UI_CLIENT_ID:-}
       LEHEN_CRYPTO__MASTER_KEY: ${LEHEN_CRYPTO__MASTER_KEY:?LEHEN_CRYPTO__MASTER_KEY must be set in ops/.env}
       LEHEN_CRYPTO__AUDIT_PEPPER: ${LEHEN_CRYPTO__AUDIT_PEPPER:?LEHEN_CRYPTO__AUDIT_PEPPER must be set in ops/.env}
+      # Local-admin bootstrap path (Sprint 1.5). Disabled if signing key absent.
+      LEHEN_LOCAL_ADMIN__ENABLED: ${LEHEN_LOCAL_ADMIN__ENABLED:-false}
+      LEHEN_LOCAL_ADMIN__SIGNING_KEY: ${LEHEN_LOCAL_ADMIN__SIGNING_KEY:-}
     volumes:
       - ../hub/src:/app/src:ro
     extra_hosts:

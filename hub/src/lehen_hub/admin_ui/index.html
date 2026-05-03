@@ -4,7 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lehen Admin</title>
-    <link rel="stylesheet" href="styles.css" />
+    <script>
+        // Cache-bust dev assets so SPA edits are picked up immediately.
+        document.write('<link rel="stylesheet" href="styles.css?v=' + Date.now() + '">');
+    </script>
 </head>
 <body>
     <header>
@@ -18,6 +21,40 @@
     <main>
         <div id="status-bar" class="status"></div>
 
+        <section id="pane-login" class="pane login-pane hidden">
+            <h2>Sign in</h2>
+            <p class="hint">Two paths into the admin surface:
+                <strong>Single sign-on</strong> via the configured SIAM
+                identity provider (the normal route once a deployment is
+                set up), or the <strong>local admin</strong> bootstrap and
+                break-glass account (auto-disabled after the first
+                successful SSO admin login; re-enabled by re-running
+                <code>lehen-hub create-admin</code> on the host).</p>
+
+            <div class="login-options">
+                <fieldset class="login-option">
+                    <legend>SSO</legend>
+                    <p id="sso-provider-label">Loading provider info…</p>
+                    <button id="sso-login-btn" type="button">Sign in via SSO</button>
+                </fieldset>
+
+                <fieldset class="login-option">
+                    <legend>Local admin (bootstrap / break-glass)</legend>
+                    <form id="local-login-form">
+                        <label>Username
+                            <input name="username" autocomplete="username" required />
+                        </label>
+                        <label>Password
+                            <input name="password" type="password"
+                                   autocomplete="current-password" required />
+                        </label>
+                        <button type="submit">Sign in locally</button>
+                    </form>
+                    <p class="hint" id="local-login-error"></p>
+                </fieldset>
+            </div>
+        </section>
+
         <nav id="tabs" class="hidden">
             <button class="tab active" data-pane="llm">LLM</button>
             <button class="tab" data-pane="integrations">Integrations</button>
@@ -25,7 +62,7 @@
             <button class="tab" data-pane="audit">Audit</button>
         </nav>
 
-        <section id="pane-llm" class="pane">
+        <section id="pane-llm" class="pane hidden">
             <h2>LLM Provider</h2>
             <p class="hint">Inference and embedding are configured independently.
                 Pick a provider on each side; the form adapts to the provider's
@@ -91,6 +128,11 @@
         </section>
     </main>
 
-    <script src="app.js"></script>
+    <!-- Cache-bust on every load. Static asset versioning is overkill for an
+         in-tree dev SPA; this guarantees edits to app.js are picked up
+         immediately without juggling browser cache. -->
+    <script>
+        document.write('<script src="app.js?v=' + Date.now() + '"><\/script>');
+    </script>
 </body>
 </html>
