@@ -1,8 +1,15 @@
-"""SIAM mapping service — singleton role→integrations allowlist."""
+"""SIAM mapping service — singleton role→integrations allowlist.
+
+On ``replace``, runs the SIAM-cascade revoke hook (Sprint 2 Phase 2.5):
+when a role's instance allowlist shrinks (or an instance becomes unmapped
+entirely), every active connection that's no longer authorized by the new
+mapping is revoked, credentials wiped, ``ConsentEvent`` recorded with
+``action="revoked-by-siam-change"``."""
 
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -12,11 +19,29 @@ from lehen_hub.storage.arcade import ArcadeClient
 
 _SIAM_ID = "default"
 
+# Callback shape for the SIAM cascade hook. Called with the previous and new
+# mappings and the request id. Returns the number of connections revoked.
+SIAMCascadeHook = Callable[
+    [dict[str, list[str]], dict[str, list[str]], str | None], Awaitable[int]
+]
+
 
 class SIAMService:
-    def __init__(self, *, arcade: ArcadeClient, audit: AdminAuditService) -> None:
+    def __init__(
+        self,
+        *,
+        arcade: ArcadeClient,
+        audit: AdminAuditService,
+        cascade: SIAMCascadeHook | None = None,
+    ) -> None:
         self._arcade = arcade
         self._audit = audit
+        self._cascade = cascade
+
+    def set_cascade(self, cascade: SIAMCascadeHook) -> None:
+        """Late-binding setter; ``main.lifespan`` wires this to
+        ``UserConnectionsService.revoke_for_users_no_longer_authorized``."""
+        self._cascade = cascade
 
     async def get(self) -> dict[str, list[str]]:
         """Return the role→[instance_id, ...] mapping. Empty dict if not yet set."""
@@ -71,6 +96,8 @@ class SIAMService:
                 request_id=request_id,
             )
         )
+        if self._cascade is not None and before != after:
+            await self._cascade(before, after, request_id)
         return after
 
 

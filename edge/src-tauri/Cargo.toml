@@ -1,0 +1,28 @@
+[package]
+name = "lehen-edge"
+version = "0.1.0"
+description = "Lehen Edge — Windows-first Tauri client for the Lehen Hub"
+authors = ["dx111ge <sven.andreas@gmail.com>"]
+edition = "2024"
+rust-version = "1.85"
+
+[lib]
+name = "lehen_edge_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-deep-link = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-http = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+keyring = "3"
+thiserror = "2"
+
+[features]
+# Disabled by default; enabled by `tauri build` to embed the WebView2 bootstrapper.
+custom-protocol = ["tauri/custom-protocol"]

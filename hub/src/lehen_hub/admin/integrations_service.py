@@ -1,8 +1,16 @@
-"""Integration instance CRUD with encrypt-on-write of secret fields."""
+"""Integration instance CRUD with encrypt-on-write of secret fields.
+
+Includes the admin-action revoke cascade (Sprint 2 §3.6 / Phase 2.5):
+disabling or deleting an instance triggers a revoke of every active
+``IntegrationConnection`` on it, with credential wipe and a per-user
+``ConsentEvent``. The cascade is plumbed through an injected callback so
+this service does not import from ``user.*`` directly.
+"""
 
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -14,6 +22,12 @@ from lehen_hub.integrations.registry import (
     get_type,
 )
 from lehen_hub.storage.arcade import ArcadeClient
+
+# Callback shape for the revoke-cascade hook. Called with the instance id
+# being disabled/deleted and the audit reason (``"revoked-by-admin-disable"``
+# or ``"revoked-by-admin-delete"``). Returns the number of connections
+# revoked. Wired in ``main.lifespan`` to ``UserConnectionsService.revoke_all_for_instance``.
+RevokeCascadeHook = Callable[[str, str, str | None], Awaitable[int]]
 
 
 class IntegrationInstanceNotFoundError(LookupError):
@@ -35,10 +49,18 @@ class IntegrationsService:
         arcade: ArcadeClient,
         audit: AdminAuditService,
         master_key: bytes,
+        revoke_cascade: RevokeCascadeHook | None = None,
     ) -> None:
         self._arcade = arcade
         self._audit = audit
         self._key = master_key
+        self._revoke_cascade = revoke_cascade
+
+    def set_revoke_cascade(self, cascade: RevokeCascadeHook) -> None:
+        """Late-binding setter for the revoke cascade hook. Used by
+        ``main.lifespan`` to break the constructor cycle between this
+        service and ``UserConnectionsService``."""
+        self._revoke_cascade = cascade
 
     async def list(self) -> list[dict[str, Any]]:
         rows = await self._arcade.query("SELECT FROM IntegrationInstance ORDER BY id")
@@ -69,6 +91,15 @@ class IntegrationsService:
             spec = get_type(type_id)
         except UnknownIntegrationTypeError as exc:
             raise IntegrationConfigError(str(exc)) from exc
+
+        if (
+            spec.connection_cardinality == "single"
+            and multi_connection_allowed
+        ):
+            raise IntegrationConfigError(
+                f"type {type_id!r} declares connection_cardinality='single'; "
+                "multi_connection_allowed must be false"
+            )
 
         existing = await self._arcade.query(
             "SELECT id FROM IntegrationInstance WHERE id = :id",
@@ -136,6 +167,14 @@ class IntegrationsService:
         before = await self._raw_get(instance_id)
 
         spec = get_type(before["type"])
+        if (
+            multi_connection_allowed is True
+            and spec.connection_cardinality == "single"
+        ):
+            raise IntegrationConfigError(
+                f"type {spec.id!r} declares connection_cardinality='single'; "
+                "multi_connection_allowed must be false"
+            )
         merged_doc = dict(before)
         before_audit = {
             "id": instance_id,
@@ -202,6 +241,16 @@ class IntegrationsService:
             )
         )
 
+        # Cascade: if this update transitions enabled True→False, revoke
+        # every active connection on this instance. Idempotent — running
+        # the cascade on an instance with no active connections is a no-op.
+        was_enabled = bool(before.get("enabled", False))
+        is_enabled = bool(merged_doc.get("enabled", False))
+        if was_enabled and not is_enabled and self._revoke_cascade is not None:
+            await self._revoke_cascade(
+                instance_id, "revoked-by-admin-disable", request_id
+            )
+
         return self._render_for_read(merged_doc)
 
     async def delete(
@@ -212,6 +261,12 @@ class IntegrationsService:
         request_id: str | None = None,
     ) -> None:
         before = await self._raw_get(instance_id)
+        # Cascade BEFORE deleting the instance row so the cascade can read
+        # the instance for any per-instance metadata it needs.
+        if self._revoke_cascade is not None:
+            await self._revoke_cascade(
+                instance_id, "revoked-by-admin-delete", request_id
+            )
         await self._arcade.command(
             "DELETE FROM IntegrationInstance WHERE id = :id",
             {"id": instance_id},

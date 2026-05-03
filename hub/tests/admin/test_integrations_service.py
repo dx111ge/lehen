@@ -206,6 +206,82 @@ async def test_create_409_on_existing_id(
 
 
 @respx.mock
+async def test_create_rejects_multi_on_single_cardinality_type(
+    service: IntegrationsService,
+    admin_user: CurrentUser,
+) -> None:
+    """``teams-graph`` has connection_cardinality='single'; admin cannot
+    enable multi_connection_allowed on it. Sprint 2 §3.3 invariant."""
+    with pytest.raises(IntegrationConfigError, match="connection_cardinality='single'"):
+        await service.create(
+            actor=admin_user,
+            instance_id="teams-prod",
+            type_id="teams-graph",
+            display_name="Teams Prod",
+            config={
+                "tenant_id": "a",
+                "client_id": "b",
+                "client_secret": "c",
+            },
+            multi_connection_allowed=True,
+        )
+
+
+@respx.mock
+async def test_create_allows_multi_on_multi_cardinality_type(
+    service: IntegrationsService,
+    admin_user: CurrentUser,
+) -> None:
+    """``outlook-graph`` has connection_cardinality='multi'; admin may set
+    multi_connection_allowed freely."""
+    respx.post(ARCADE_QUERY_URL).mock(return_value=httpx.Response(200, json={"result": []}))
+    respx.post(ARCADE_COMMAND_URL).mock(
+        return_value=httpx.Response(200, json={"result": [{"created": 1}]})
+    )
+
+    result = await service.create(
+        actor=admin_user,
+        instance_id="outlook-graph-prod",
+        type_id="outlook-graph",
+        display_name="Outlook (Graph)",
+        config={
+            "tenant_id": "ten-001",
+            "client_id": "cli-001",
+            "client_secret": "secret",
+        },
+        multi_connection_allowed=True,
+    )
+    assert result["multi_connection_allowed"] is True
+
+
+@respx.mock
+async def test_update_rejects_multi_on_single_cardinality_type(
+    service: IntegrationsService,
+    admin_user: CurrentUser,
+) -> None:
+    """An existing single-cardinality instance cannot be flipped to multi
+    via update. Same invariant as create."""
+    existing_doc = {
+        "id": "teams-prod",
+        "type": "teams-graph",
+        "display_name": "Teams",
+        "config_public": {"tenant_id": "a", "client_id": "b"},
+        "config_secrets_encrypted": {"client_secret": "<encrypted>"},
+        "enabled": True,
+        "multi_connection_allowed": False,
+    }
+    respx.post(ARCADE_QUERY_URL).mock(
+        return_value=httpx.Response(200, json={"result": [existing_doc]})
+    )
+    with pytest.raises(IntegrationConfigError, match="connection_cardinality='single'"):
+        await service.update(
+            actor=admin_user,
+            instance_id="teams-prod",
+            multi_connection_allowed=True,
+        )
+
+
+@respx.mock
 async def test_get_returns_no_plaintext_secrets(
     service: IntegrationsService,
 ) -> None:

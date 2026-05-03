@@ -125,7 +125,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.siam_service = SIAMService(arcade=arcade, audit=admin_audit)
     app.state.connections_service = UserConnectionsService(
         arcade=arcade,
+        siam=app.state.siam_service,
         consent_retention_days=settings.retention.consent_event_days,
+        master_key=master_key,
+        allowed_redirect_uris=tuple(settings.oauth_allowed_redirect_uris),
+    )
+
+    # Late-bind the admin cascade hooks: IntegrationsService / SIAMService
+    # were constructed before connections_service existed; hand them the
+    # callbacks now that it does. Breaks the constructor cycle without
+    # importing user.* from admin.*.
+    app.state.integrations_service.set_revoke_cascade(
+        app.state.connections_service.revoke_all_for_instance
+    )
+    app.state.siam_service.set_cascade(
+        app.state.connections_service.revoke_for_users_no_longer_authorized
     )
     app.state.me_service = MeService(
         arcade=arcade,

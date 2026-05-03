@@ -57,6 +57,9 @@ coverage.xml
 # ---- Rust (Edge) ----
 target/
 Cargo.lock
+# Tauri ships as a binary, not a library — its lock file pinning gives
+# reproducible builds across contributors. Override the blanket rule above.
+!edge/src-tauri/Cargo.lock
 **/*.rs.bk
 *.pdb
 

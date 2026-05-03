@@ -232,6 +232,13 @@ class Settings(BaseSettings):
     retention: RetentionSettings = Field(default_factory=RetentionSettings)
     local_admin: LocalAdminSettings = Field(default_factory=LocalAdminSettings)
 
+    # OAuth redirect-URI allowlist for SourceAdapter flows. Comma-separated
+    # in env (``LEHEN_OAUTH_ALLOWED_REDIRECT_URIS``). Default covers the
+    # Edge's custom URL scheme; production deployments add their own values.
+    oauth_allowed_redirect_uris: list[str] = Field(
+        default_factory=lambda: ["lehen://oauth/callback"]
+    )
+
     # Identity provider selector + per-provider config blocks. Exactly one
     # provider is active per Hub deployment; both blocks may be populated in
     # dev for switching between them via ``LEHEN_IDENTITY_PROVIDER``.

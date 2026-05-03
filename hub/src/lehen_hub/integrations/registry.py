@@ -5,18 +5,32 @@ are stored in plaintext and returned in GET responses. Secret fields are
 AES-256-GCM encrypted at rest and replaced by ``{is_set: bool, hmac: ...}``
 markers in API responses + audit logs.
 
-Three types ship in v1, matching the default SourceAdapters in DESIGN.md §6:
-- ``outlook-com``       — Outlook Mail via Windows COM (Edge-local; no config)
+Each type also declares its ``connection_cardinality`` — ``"single"`` for
+sources where one user has exactly one identity per instance (Teams in a
+tenant, an ITSM account), or ``"multi"`` for sources where a user can
+legitimately have several identities or mailboxes (Outlook profiles via
+COM, Outlook-Graph with primary plus shared mailboxes). The cardinality
+is the source-of-truth for admin validation: setting
+``multi_connection_allowed=true`` on a single-cardinality type is a
+configuration error and is rejected by ``IntegrationsService.create/update``.
+
+Four types ship in v1, matching the default SourceAdapters in DESIGN.md §6:
+- ``outlook-edge-com``  — Outlook Mail via Windows COM on the Edge
+- ``outlook-graph``     — Outlook Mail via Microsoft Graph (Hub-side, Sprint 2)
 - ``teams-graph``       — Microsoft Teams via Graph API (tenant-OAuth)
 - ``itsm-rest-generic`` — generic ITSM REST adapter (configurable endpoint)
 
-Real ``SourceAdapter`` implementations are out of scope for journey 1 — these
-declarations only feed admin UI rendering and `IntegrationInstance` validation.
+Real ``SourceAdapter`` implementations land per-sprint — these declarations
+feed admin UI rendering, `IntegrationInstance` validation, and the OAuth
+flow shape (multi-cardinality types exercise per-mailbox connections).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
+
+ConnectionCardinality = Literal["single", "multi"]
 
 
 class UnknownIntegrationTypeError(ValueError):
@@ -42,6 +56,7 @@ class IntegrationType:
     display_name: str
     description: str
     fields: tuple[FieldSpec, ...]
+    connection_cardinality: ConnectionCardinality
 
     @property
     def public_field_names(self) -> tuple[str, ...]:
@@ -54,20 +69,27 @@ class IntegrationType:
 
 INTEGRATION_TYPES: tuple[IntegrationType, ...] = (
     IntegrationType(
-        id="outlook-com",
-        display_name="Microsoft Outlook (COM)",
+        id="outlook-edge-com",
+        display_name="Microsoft Outlook (Edge COM)",
         description=(
-            "Outlook mail captured via Windows COM. The Edge consumes the existing "
-            "Outlook session on the user's workstation; no central credentials needed."
+            "Outlook mail captured via Windows COM on the user's workstation. "
+            "The Edge consumes the existing Outlook session; no central "
+            "credentials needed. A user can have multiple Outlook stores "
+            "(primary mailbox, delegated/shared mailboxes) — each becomes a "
+            "separate connection."
         ),
         fields=(),
+        connection_cardinality="multi",
     ),
     IntegrationType(
-        id="teams-graph",
-        display_name="Microsoft Teams (Graph API)",
+        id="outlook-graph",
+        display_name="Microsoft Outlook (Graph API)",
         description=(
-            "Microsoft Teams via the Graph API with delegated user consent. "
-            "Requires a registered Microsoft Entra application (tenant + client + secret)."
+            "Outlook mail via the Microsoft Graph API with delegated user "
+            "consent. Requires a registered Microsoft Entra application "
+            "(tenant + client + secret). A user's primary mailbox plus any "
+            "shared mailboxes they have delegated access to become separate "
+            "connections."
         ),
         fields=(
             FieldSpec(
@@ -94,13 +116,50 @@ INTEGRATION_TYPES: tuple[IntegrationType, ...] = (
                 description="The client secret value from the Entra application.",
             ),
         ),
+        connection_cardinality="multi",
+    ),
+    IntegrationType(
+        id="teams-graph",
+        display_name="Microsoft Teams (Graph API)",
+        description=(
+            "Microsoft Teams via the Graph API with delegated user consent. "
+            "Requires a registered Microsoft Entra application (tenant + client + secret). "
+            "A user has exactly one Teams identity per Entra tenant."
+        ),
+        fields=(
+            FieldSpec(
+                name="tenant_id",
+                label="Microsoft Tenant ID",
+                field_type="uuid",
+                required=True,
+                placeholder="00000000-0000-0000-0000-000000000000",
+                description="The Microsoft Entra tenant id of the customer.",
+            ),
+            FieldSpec(
+                name="client_id",
+                label="Application (Client) ID",
+                field_type="uuid",
+                required=True,
+                description="The client id of the registered Entra application.",
+            ),
+            FieldSpec(
+                name="client_secret",
+                label="Client Secret",
+                field_type="string",
+                required=True,
+                secret=True,
+                description="The client secret value from the Entra application.",
+            ),
+        ),
+        connection_cardinality="single",
     ),
     IntegrationType(
         id="itsm-rest-generic",
         display_name="Generic ITSM (REST)",
         description=(
             "Generic ITSM REST adapter. Use for HP Service Manager, BMC, "
-            "or any ITSM exposing a REST API + bearer-token / API-key auth."
+            "or any ITSM exposing a REST API + bearer-token / API-key auth. "
+            "A user has exactly one identity per ITSM system."
         ),
         fields=(
             FieldSpec(
@@ -118,6 +177,7 @@ INTEGRATION_TYPES: tuple[IntegrationType, ...] = (
                 secret=True,
             ),
         ),
+        connection_cardinality="single",
     ),
 )
 

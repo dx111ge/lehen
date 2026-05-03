@@ -1,0 +1,25 @@
+# Node / Vite
+node_modules/
+dist/
+*.log
+
+# TypeScript composite-build artifacts (regenerated on every build)
+*.tsbuildinfo
+vite.config.d.ts
+vite.config.js
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
+# Cargo.lock is intentionally tracked — Tauri ships as a binary, so the
+# lock file pinning gives reproducible builds across contributors.
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local env
+.env
+.env.local
