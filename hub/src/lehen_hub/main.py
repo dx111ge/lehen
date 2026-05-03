@@ -38,11 +38,14 @@ from lehen_hub.admin import (
     LLMService,
     SIAMService,
 )
+from lehen_hub.admin.local_admin_service import LocalAdminService
 from lehen_hub.api.admin import router as admin_router
+from lehen_hub.api.admin.local_login import router as local_login_router
 from lehen_hub.api.auth_config import router as auth_config_router
 from lehen_hub.api.health import router as health_router
 from lehen_hub.api.me import router as me_router
 from lehen_hub.api.me_connections import router as me_connections_router
+from lehen_hub.auth.identity_provider import build_identity_provider_from_settings
 from lehen_hub.auth.jwks import JWKSCache
 from lehen_hub.config import Settings, get_settings
 from lehen_hub.logging import configure_logging
@@ -61,12 +64,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(settings.log_level)
     log = structlog.get_logger()
 
+    # 0. Identity provider — built up-front so subsequent steps consume the
+    #    abstraction rather than reaching into provider-specific settings.
+    identity_provider = build_identity_provider_from_settings(
+        keycloak=settings.keycloak,
+        entra=settings.entra,
+        selector=settings.identity_provider,
+    )
+    app.state.identity_provider = identity_provider
+
     log.info(
         "hub.startup",
         env=settings.env,
         version=__version__,
         arcadedb_http=settings.arcadedb.http_url,
-        keycloak_issuer=settings.keycloak.issuer,
+        identity_provider=identity_provider.provider_id,
+        identity_issuer=identity_provider.issuer,
     )
 
     # 1. Validate crypto keys (fail-closed if pydantic validators didn't catch).
@@ -84,14 +97,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.http = http_client
 
-    # 3. JWKS cache + warm.
+    # 3. JWKS cache + warm. Sourced from the active identity provider so
+    #    swapping Keycloak↔Entra requires no lifespan changes.
     jwks_cache = JWKSCache(
-        settings.keycloak.jwks_url,
-        ttl_seconds=settings.keycloak.jwks_ttl_seconds,
+        identity_provider.jwks_url,
+        ttl_seconds=identity_provider.jwks_ttl_seconds,
     )
     await jwks_cache.warm(http_client)
     app.state.jwks_cache = jwks_cache
-    log.info("hub.auth.jwks_warm", url=settings.keycloak.jwks_url)
+    log.info("hub.auth.jwks_warm", url=identity_provider.jwks_url)
 
     # 4. ArcadeDB client + idempotent admin schema bootstrap.
     arcade = ArcadeClient(settings=settings.arcadedb, http=http_client)
@@ -120,6 +134,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         connections=app.state.connections_service,
         login_retention_days=settings.retention.login_event_days,
     )
+
+    # 6. Local-admin bootstrap path (Sprint 1.5). Optional; skipped when
+    #    no signing key is configured. The signing key is also exposed on
+    #    app.state for the auth dependency's local-token verifier.
+    if settings.local_admin.enabled and settings.local_admin.signing_key is not None:
+        signing_key_bytes = settings.local_admin.get_signing_key_bytes()
+        app.state.local_admin_signing_key = signing_key_bytes
+        app.state.local_admin_service = LocalAdminService(
+            arcade=arcade,
+            signing_key=signing_key_bytes,
+            token_ttl_seconds=settings.local_admin.token_ttl_seconds,
+            failed_attempts_threshold=settings.local_admin.failed_attempts_threshold,
+            lockout_duration_seconds=settings.local_admin.lockout_duration_seconds,
+            rate_limit_per_minute=settings.local_admin.rate_limit_per_minute,
+        )
+        app.state.local_admin_disable_state = "pending"
+        log.info("hub.local_admin.ready")
+    else:
+        app.state.local_admin_signing_key = None
+        app.state.local_admin_service = None
+        app.state.local_admin_disable_state = "no_local_admin"
+        log.info(
+            "hub.local_admin.disabled",
+            reason=(
+                "LEHEN_LOCAL_ADMIN__ENABLED is false"
+                if not settings.local_admin.enabled
+                else "no signing key configured"
+            ),
+        )
+
     log.info("hub.services.ready")
 
     try:
@@ -152,6 +196,11 @@ def create_app() -> FastAPI:
     app.include_router(auth_config_router)
     app.include_router(me_router)
     app.include_router(me_connections_router)
+    # Local-login is registered BEFORE the SIAM-gated admin router so its
+    # explicit ``/admin/local-login`` path stays unauthenticated. The
+    # admin_router still owns every other ``/admin/*`` route under
+    # ``Depends(require_admin)``.
+    app.include_router(local_login_router)
     app.include_router(admin_router)
 
     # Static SPA mounts. Explicit /admin/* API routes are matched first because

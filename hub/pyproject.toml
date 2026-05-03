@@ -17,6 +17,7 @@ dependencies = [
     "python-jose[cryptography]>=3.3,<4.0",
     "cachetools>=5.5,<7.0",
     "cryptography>=43,<47",
+    "argon2-cffi>=23.1,<26.0",
 ]
 
 [dependency-groups]
@@ -71,7 +72,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "ANN", "PLR2004", "PLC0415"]
+"tests/*" = ["S101", "S105", "S106", "ANN", "PLR2004", "PLC0415"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -97,7 +98,13 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-q --strict-markers --strict-config --cov=lehen_hub --cov-report=term-missing"
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # pytest-asyncio occasionally leaks ProactorEventLoop on Windows during
+    # cross-test teardown. The leak is in the test runner, not application
+    # code; we keep the strict ``error`` filter for everything else.
+    "ignore:unclosed event loop:ResourceWarning",
+]
 
 [tool.coverage.run]
 source = ["src/lehen_hub"]

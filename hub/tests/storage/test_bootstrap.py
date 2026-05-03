@@ -22,7 +22,7 @@ def arcade_settings() -> ArcadeDBSettings:
     return ArcadeDBSettings(
         host="test-arcade",
         http_port=2480,
-        password="test-password",  # noqa: S106 — test fixture
+        password="test-password",
         database="lehen-test",
     )
 
@@ -88,10 +88,13 @@ async def test_first_boot_creates_all_types_and_seeds_llm(
         "ConsentEvent",
         "AdminAuditEvent",
         "LoginEvent",
+        "LocalAdmin",
+        "LocalAdminLoginEvent",
+        "LocalAdminCredentialRotated",
     ]
     assert schema_route.call_count == 2  # one schema list + one LLMConfig count
-    # 7 type creates + 1 LLMConfig seed = 8 commands
-    assert command_route.call_count == 8
+    # 10 type creates + 1 LLMConfig seed = 11 commands
+    assert command_route.call_count == 11
 
 
 @respx.mock
@@ -107,6 +110,9 @@ async def test_second_boot_creates_nothing(
         {"name": "ConsentEvent"},
         {"name": "AdminAuditEvent"},
         {"name": "LoginEvent"},
+        {"name": "LocalAdmin"},
+        {"name": "LocalAdminLoginEvent"},
+        {"name": "LocalAdminCredentialRotated"},
     ]
     respx.post(_expected_query_url()).mock(
         side_effect=[
@@ -129,7 +135,8 @@ async def test_partial_bootstrap_only_creates_missing(
     arcade_client: ArcadeClient,
 ) -> None:
     _mock_db_exists(True)
-    # Schema has some types, missing ConsentEvent and LoginEvent
+    # Schema has some types, missing ConsentEvent, LoginEvent, and the
+    # local-admin trio
     existing_types = [
         {"name": "LLMConfig"},
         {"name": "IntegrationInstance"},
@@ -149,8 +156,14 @@ async def test_partial_bootstrap_only_creates_missing(
 
     created = await ensure_admin_schema(arcade_client)
 
-    assert created == ["ConsentEvent", "LoginEvent"]
-    assert command_route.call_count == 2
+    assert created == [
+        "ConsentEvent",
+        "LoginEvent",
+        "LocalAdmin",
+        "LocalAdminLoginEvent",
+        "LocalAdminCredentialRotated",
+    ]
+    assert command_route.call_count == 5
 
 
 @respx.mock
@@ -175,6 +188,9 @@ async def test_seed_uses_hardcoded_defaults(
                             "ConsentEvent",
                             "AdminAuditEvent",
                             "LoginEvent",
+                            "LocalAdmin",
+                            "LocalAdminLoginEvent",
+                            "LocalAdminCredentialRotated",
                         )
                     ]
                 },

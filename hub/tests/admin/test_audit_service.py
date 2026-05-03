@@ -33,7 +33,7 @@ def arcade(http_client: httpx.AsyncClient) -> ArcadeClient:
     return ArcadeClient(
         settings=ArcadeDBSettings(
             host="test-arcade",
-            password="test",  # noqa: S106
+            password="test",
             database="lehen-test",
         ),
         http=http_client,

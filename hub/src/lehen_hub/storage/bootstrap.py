@@ -31,6 +31,11 @@ _DOC_TYPES = (
     "ConsentEvent",
     "AdminAuditEvent",
     "LoginEvent",
+    # Sprint 1.5 — local-admin bootstrap surface (separate audit class so ops
+    # can alert on local-admin events independently from regular admin actions).
+    "LocalAdmin",
+    "LocalAdminLoginEvent",
+    "LocalAdminCredentialRotated",
 )
 
 # First-run defaults for LLMConfig. Admin owns these via /admin/llm after the
