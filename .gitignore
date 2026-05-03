@@ -79,6 +79,15 @@ build/
 .svelte-kit/
 .solid/
 
+# ---- Operator-only secrets ----
+# Files documenting per-deployment IdP / app-registration values that
+# include client secrets, app keys, or test-user passwords. Never committed.
+docs/entra-Connection-details.md
+docs/*-connection-details*.md
+docs/*-credentials*.md
+docs/*-secrets*.md
+docs/local/
+
 # ---- IDE / Editor ----
 .claude/
 .vscode/
