@@ -29,17 +29,30 @@ export async function subscribeDeepLinks(
     const url = event.payload.url;
     let parsed: URL;
     try {
-      // The lehen:// scheme is parsed by URL just fine in modern browsers.
       parsed = new URL(url);
     } catch {
+      console.warn("[deep-link] could not parse URL", url);
       return;
     }
-    const path = parsed.pathname;
-    const params: DeepLinkParams = { path, query: parsed.searchParams };
-    if (path.startsWith("/auth/")) {
+    // For ``lehen://auth/callback?...`` the URL parser puts ``auth`` in
+    // ``hostname`` and ``/callback`` in ``pathname`` — the surface name lives
+    // in the hostname, not the pathname. Route by hostname.
+    const surface = parsed.hostname;
+    const params: DeepLinkParams = {
+      path: parsed.pathname,
+      query: parsed.searchParams,
+    };
+    if (surface === "auth") {
       onAuth(params);
-    } else if (path.startsWith("/oauth/")) {
+    } else if (surface === "oauth") {
       onOauth(params);
+    } else {
+      console.warn(
+        "[deep-link] unrecognised surface",
+        surface,
+        "from URL",
+        url,
+      );
     }
   });
 }

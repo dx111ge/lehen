@@ -12,10 +12,20 @@
 //   5. Exchange code for tokens at the token_endpoint.
 //   6. Hand the access_token to the keyring (via `tokens::store_token`).
 
+import { invoke } from "@tauri-apps/api/core";
+import { fetch } from "@tauri-apps/plugin-http";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 
 import { fetchAuthPublicConfig, getEdgeConfig } from "../api/hub";
 import type { AuthPublicConfig, OidcDiscovery } from "../api/types";
+
+interface OidcTokenResponse {
+  access_token: string;
+  refresh_token: string | null;
+  expires_in: number | null;
+  token_type: string | null;
+  scope: string | null;
+}
 
 interface AuthorizationContext {
   state: string;
@@ -25,10 +35,33 @@ interface AuthorizationContext {
   redirectUri: string;
 }
 
-// In-memory map of state → context. The Edge process is single-user so a
-// module-level map is fine; if the user starts a flow and never completes it
-// the entry leaks until the next restart, which is acceptable.
-const pendingFlows = new Map<string, AuthorizationContext>();
+// Pending flow contexts persist in ``sessionStorage`` rather than a
+// module-level Map. Vite HMR re-executes a module when that module's
+// source changes, which would clear an in-memory Map mid-flow. The
+// session store survives HMR (and page reloads within the same window),
+// so the user's authorization round-trip can take as long as Microsoft's
+// login UX requires without us losing the verifier.
+
+const FLOW_KEY_PREFIX = "lehen_pkce_flow_";
+
+function flowKey(state: string): string {
+  return `${FLOW_KEY_PREFIX}${state}`;
+}
+
+function storeFlow(ctx: AuthorizationContext): void {
+  sessionStorage.setItem(flowKey(ctx.state), JSON.stringify(ctx));
+}
+
+function takeFlow(state: string): AuthorizationContext | null {
+  const raw = sessionStorage.getItem(flowKey(state));
+  if (!raw) return null;
+  sessionStorage.removeItem(flowKey(state));
+  try {
+    return JSON.parse(raw) as AuthorizationContext;
+  } catch {
+    return null;
+  }
+}
 
 function randomString(byteLen: number): string {
   const bytes = new Uint8Array(byteLen);
@@ -83,7 +116,7 @@ export async function beginHubLogin(): Promise<{ state: string }> {
   const codeChallenge = base64UrlNoPad(challengeBytes);
   const state = randomString(16);
 
-  pendingFlows.set(state, {
+  storeFlow({
     state,
     codeVerifier,
     publicConfig,
@@ -91,20 +124,26 @@ export async function beginHubLogin(): Promise<{ state: string }> {
     redirectUri,
   });
 
+  // OAuth-2 wants ONE ``scope`` param with space-separated values; calling
+  // ``params.append("scope", ...)`` after the constructor creates a second
+  // ``scope`` query parameter, which Entra rejects with AADSTS9000411.
+  // Build the full scope list first, then put it in the URLSearchParams.
+  // ``offline_access`` is required for Entra to issue a refresh token.
+  // The API scope (``${audience}/access_as_user``) is what makes the
+  // resulting access token's ``aud`` match the Hub's expected audience.
+  const scopes = ["openid", "profile", "email", "offline_access"];
+  if (publicConfig.audience) {
+    scopes.push(`${publicConfig.audience}/access_as_user`);
+  }
   const params = new URLSearchParams({
     client_id: publicConfig.edge_client_id,
     response_type: "code",
     redirect_uri: redirectUri,
-    scope: "openid profile email",
+    scope: scopes.join(" "),
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
   });
-  if (publicConfig.audience) {
-    // Some Entra app registrations require explicit audience as a scope to
-    // get a token for the Hub-API resource. Pass it as the resource scope.
-    params.append("scope", `${publicConfig.audience}/.default`);
-  }
 
   const authUrl = `${discovery.authorization_endpoint}?${params.toString()}`;
   await openExternal(authUrl);
@@ -120,38 +159,25 @@ export async function completeHubLogin(
   state: string,
   code: string,
 ): Promise<{ accessToken: string; expiresIn: number }> {
-  const context = pendingFlows.get(state);
+  const context = takeFlow(state);
   if (!context) {
     throw new Error(
       "no pending flow matches the returned state — possible replay or restart",
     );
   }
-  pendingFlows.delete(state);
 
-  const body = new URLSearchParams({
-    grant_type: "authorization_code",
-    client_id: context.publicConfig.edge_client_id,
+  // Token exchange goes through a Rust command rather than fetch — Microsoft
+  // rejects the redemption with AADSTS9002326 if the request carries a
+  // webview Origin header (the app is registered as native, not SPA).
+  // reqwest from Rust sends no Origin header, so Microsoft treats the
+  // request correctly as a native-client redemption.
+  const data = await invoke<OidcTokenResponse>("exchange_oidc_code", {
+    tokenEndpoint: context.discovery.token_endpoint,
+    clientId: context.publicConfig.edge_client_id,
+    redirectUri: context.redirectUri,
     code,
-    redirect_uri: context.redirectUri,
-    code_verifier: context.codeVerifier,
+    codeVerifier: context.codeVerifier,
   });
-  const response = await fetch(context.discovery.token_endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
-    body: body.toString(),
-  });
-  if (!response.ok) {
-    throw new Error(
-      `token exchange failed: ${response.status} ${await response.text()}`,
-    );
-  }
-  const data = (await response.json()) as {
-    access_token: string;
-    expires_in?: number;
-  };
   return {
     accessToken: data.access_token,
     expiresIn: data.expires_in ?? 3600,
@@ -163,5 +189,10 @@ export async function completeHubLogin(
  * stale state can't be replayed.
  */
 export function clearPendingFlows(): void {
-  pendingFlows.clear();
+  for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
+    const key = sessionStorage.key(i);
+    if (key && key.startsWith(FLOW_KEY_PREFIX)) {
+      sessionStorage.removeItem(key);
+    }
+  }
 }

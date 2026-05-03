@@ -130,7 +130,7 @@ async def _verify_siam_token(
             jwks_cache=jwks_cache,
             http_client=http_client,
             expected_audience=provider.audience,
-            expected_issuer=provider.issuer,
+            expected_issuer=provider.accepted_issuers,
         )
     except InvalidTokenError as exc:
         structlog.get_logger(__name__).info("hub.auth.token_rejected", error=str(exc))

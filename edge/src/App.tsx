@@ -1,5 +1,5 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchAuthPublicConfig, fetchMe, completeGrant, getEdgeConfig } from "./api/hub";
 import type { AuthPublicConfig, MeResponse } from "./api/types";
@@ -74,7 +74,22 @@ export function App() {
     }
   }, [bearer, refreshMe]);
 
-  // Subscribe to deep-link callbacks.
+  // Refs so the deep-link listener reads current state at firing time
+  // rather than from closure-captured-at-subscription-time. Without this,
+  // the listener has dependencies on bearer + pendingConnectInstance and
+  // gets re-subscribed every time either changes — a brief race window in
+  // which no listener is active, and any deep link that fires then is
+  // dropped. Using refs lets the listener register exactly once.
+  const bearerRef = useRef<string | null>(null);
+  const pendingConnectRef = useRef<string | null>(null);
+  useEffect(() => {
+    bearerRef.current = bearer;
+  }, [bearer]);
+  useEffect(() => {
+    pendingConnectRef.current = pendingConnectInstance;
+  }, [pendingConnectInstance]);
+
+  // Subscribe to deep-link callbacks. Stable subscription — registered once.
   useEffect(() => {
     let unsub: UnlistenFn | null = null;
     (async () => {
@@ -84,7 +99,9 @@ export function App() {
           const code = params.query.get("code");
           const state = params.query.get("state");
           if (!code || !state) {
-            setError("auth callback missing code or state");
+            setError(
+              `auth callback missing fields: code=${!!code} state=${!!state}`,
+            );
             return;
           }
           try {
@@ -100,20 +117,25 @@ export function App() {
           // Source-OAuth callback → forward to Hub's /complete endpoint.
           const code = params.query.get("code");
           const state = params.query.get("state");
-          if (!code || !state || !bearer) {
-            setError("oauth callback missing code, state, or active session");
-            return;
-          }
-          if (!pendingConnectInstance) {
+          const currentBearer = bearerRef.current;
+          const currentPending = pendingConnectRef.current;
+          if (!code || !state || !currentBearer || !currentPending) {
             setError(
-              "oauth callback received but no pending connect instance — refusing",
+              `oauth callback missing context: code=${!!code} ` +
+                `state=${!!state} bearer=${!!currentBearer} ` +
+                `pending=${currentPending ?? "null"}`,
             );
             return;
           }
           try {
-            await completeGrant(bearer, pendingConnectInstance, code, state);
+            await completeGrant(
+              currentBearer,
+              currentPending,
+              code,
+              state,
+            );
             setPendingConnectInstance(null);
-            await refreshMe(bearer);
+            await refreshMe(currentBearer);
           } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
           }
@@ -125,7 +147,7 @@ export function App() {
         unsub();
       }
     };
-  }, [bearer, pendingConnectInstance, refreshMe]);
+  }, [refreshMe]);
 
   const handleSignOut = useCallback(async () => {
     await deleteToken("hub_login");

@@ -233,15 +233,23 @@ async def exchange_code_for_tokens(
     http_client: httpx.AsyncClient,
     now: int | None = None,
 ) -> OAuthTokens:
-    """Exchange an authorization code for an access + refresh token pair."""
+    """Exchange an authorization code for an access + refresh token pair.
+
+    ``client_secret`` is only included when non-empty. Public clients
+    (Entra "Mobile and desktop applications", "Single-page application")
+    must NOT send it — PKCE is the proof-of-possession instead, and
+    Microsoft rejects with AADSTS700025 if it appears. Confidential
+    clients pass a real secret; the helper handles both shapes.
+    """
     body = {
         "grant_type": "authorization_code",
         "client_id": client_id,
-        "client_secret": client_secret,
         "code": code,
         "redirect_uri": redirect_uri,
         "code_verifier": code_verifier,
     }
+    if client_secret:
+        body["client_secret"] = client_secret
     return await _post_token_endpoint(
         url=token_endpoint, body=body, http_client=http_client, now=now
     )
@@ -256,13 +264,18 @@ async def refresh_access_token(
     http_client: httpx.AsyncClient,
     now: int | None = None,
 ) -> OAuthTokens:
-    """Use a refresh token to obtain a fresh access token."""
+    """Use a refresh token to obtain a fresh access token.
+
+    Same client-type semantics as ``exchange_code_for_tokens`` — public
+    clients omit ``client_secret``, confidential clients include it.
+    """
     body = {
         "grant_type": "refresh_token",
         "client_id": client_id,
-        "client_secret": client_secret,
         "refresh_token": refresh_token,
     }
+    if client_secret:
+        body["client_secret"] = client_secret
     return await _post_token_endpoint(
         url=token_endpoint, body=body, http_client=http_client, now=now
     )

@@ -10,6 +10,15 @@
     "core:webview:default",
     "shell:allow-open",
     "deep-link:default",
-    "http:default"
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "http://localhost:*" },
+        { "url": "http://127.0.0.1:*" },
+        { "url": "https://login.microsoftonline.com/*" },
+        { "url": "https://*.b2clogin.com/*" },
+        { "url": "https://graph.microsoft.com/*" }
+      ]
+    }
   ]
 }

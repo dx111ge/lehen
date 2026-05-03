@@ -369,13 +369,22 @@ class UserConnectionsService:
         adapter = build_adapter_for_instance(instance)
         config_public = instance.get("config_public") or {}
         client_id = str(config_public.get("client_id") or "")
+        if not client_id:
+            raise OAuthFlowConfigError(
+                f"instance {integration_instance_id} missing client_id"
+            )
+        # client_secret is only present for confidential-client app registrations.
+        # Public clients (the recommended Edge setup) authenticate via PKCE and
+        # MUST NOT send a secret — Microsoft rejects with AADSTS700025 if any
+        # secret reaches the token endpoint. Treat missing secret as the public-
+        # client path; the OAuth helper omits the field on the wire when empty.
         config_secrets = instance.get("config_secrets_encrypted") or {}
         encrypted_secret = config_secrets.get("client_secret")
-        if not client_id or not encrypted_secret:
-            raise OAuthFlowConfigError(
-                f"instance {integration_instance_id} missing client_id or client_secret"
-            )
-        client_secret = decrypt(encrypted_secret, key=self._master_key)
+        client_secret = (
+            decrypt(encrypted_secret, key=self._master_key)
+            if encrypted_secret
+            else ""
+        )
 
         tokens = await exchange_code_for_tokens(
             token_endpoint=adapter.token_endpoint,
@@ -666,7 +675,11 @@ class UserConnectionsService:
             client_id = str(config_public.get("client_id") or "")
             config_secrets = instance.get("config_secrets_encrypted") or {}
             encrypted_secret = config_secrets.get("client_secret") or ""
-            client_secret = decrypt(encrypted_secret, key=self._master_key)
+            client_secret = (
+                decrypt(encrypted_secret, key=self._master_key)
+                if encrypted_secret
+                else ""
+            )
             return await refresh_access_token(
                 token_endpoint=adapter.token_endpoint,
                 client_id=client_id,

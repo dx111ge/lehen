@@ -1,8 +1,14 @@
-// Thin Hub HTTP client. Uses the system fetch (Tauri's webview is
-// Chromium-based, so standard fetch + CORS works). The Hub URL is read
-// once from the Tauri side at startup; it does not change at runtime.
+// Thin Hub HTTP client. Uses Tauri's HTTP plugin (`@tauri-apps/plugin-http`)
+// rather than the webview's native fetch — the webview lives at a separate
+// origin (``tauri://localhost``) from the Hub, so native fetch hits CORS.
+// The plugin routes requests through the Rust side; no CORS preflight,
+// and it gives us a proper desktop HTTP client (timeouts, redirects).
+//
+// The Hub URL is read once from the Tauri side at startup; it does not
+// change at runtime.
 
 import { invoke } from "@tauri-apps/api/core";
+import { fetch } from "@tauri-apps/plugin-http";
 
 import type {
   AuthPublicConfig,
@@ -77,7 +83,7 @@ export async function initiateGrant(
   );
   if (!response.ok) {
     throw new HubError(
-      `initiate failed: ${response.status} ${response.statusText}`,
+      await formatHubError("initiate", response),
       response.status,
     );
   }
@@ -105,7 +111,7 @@ export async function completeGrant(
   );
   if (!response.ok) {
     throw new HubError(
-      `complete failed: ${response.status} ${response.statusText}`,
+      await formatHubError("complete", response),
       response.status,
     );
   }
@@ -120,4 +126,29 @@ export class HubError extends Error {
     super(message);
     this.name = "HubError";
   }
+}
+
+async function formatHubError(
+  step: string,
+  response: Response,
+): Promise<string> {
+  // Include the body's ``detail`` field if FastAPI sent one — that's where
+  // the actual reason lives (token-endpoint upstream error, OAuth state
+  // mismatch, etc.). Without this the user sees only the HTTP status.
+  let detail = "";
+  try {
+    const text = await response.text();
+    if (text) {
+      try {
+        const body = JSON.parse(text) as { detail?: string };
+        detail = body?.detail ?? text;
+      } catch {
+        detail = text;
+      }
+    }
+  } catch {
+    // body read failed — fall through with empty detail
+  }
+  const suffix = detail ? `: ${detail}` : "";
+  return `${step} failed: ${response.status} ${response.statusText}${suffix}`;
 }

@@ -87,9 +87,12 @@ INTEGRATION_TYPES: tuple[IntegrationType, ...] = (
         description=(
             "Outlook mail via the Microsoft Graph API with delegated user "
             "consent. Requires a registered Microsoft Entra application "
-            "(tenant + client + secret). A user's primary mailbox plus any "
-            "shared mailboxes they have delegated access to become separate "
-            "connections."
+            "(tenant + client). For public-client app registrations "
+            "(Mobile and desktop applications, recommended for the Edge), "
+            "leave Client Secret empty — PKCE is the proof-of-possession. "
+            "For confidential-client registrations, paste the secret. "
+            "A user's primary mailbox plus any shared mailboxes they have "
+            "delegated access to become separate connections."
         ),
         fields=(
             FieldSpec(
@@ -111,9 +114,12 @@ INTEGRATION_TYPES: tuple[IntegrationType, ...] = (
                 name="client_secret",
                 label="Client Secret",
                 field_type="string",
-                required=True,
+                required=False,
                 secret=True,
-                description="The client secret value from the Entra application.",
+                description=(
+                    "Only for confidential-client app registrations. Public "
+                    "clients (the recommended setup) leave this empty."
+                ),
             ),
         ),
         connection_cardinality="multi",

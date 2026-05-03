@@ -15,11 +15,13 @@
 //!   the frontend on demand. Customers ship pre-configured installers; dev
 //!   uses `LEHEN_HUB_URL`.
 
+use std::collections::HashMap;
 use std::env;
 
 use serde::{Deserialize, Serialize};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
+use tauri_plugin_http::reqwest;
 
 mod tokens;
 
@@ -46,6 +48,59 @@ struct EdgeConfig {
     oauth_callback_path: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct OidcTokenResponse {
+    access_token: String,
+    refresh_token: Option<String>,
+    expires_in: Option<i64>,
+    token_type: Option<String>,
+    scope: Option<String>,
+}
+
+/// OIDC PKCE code exchange.
+///
+/// Done in Rust (not from the webview) because Microsoft's v2 token endpoint
+/// rejects "Mobile and desktop applications" client-type tokens redeemed
+/// from a webview origin (AADSTS9002326). reqwest from Rust sends no Origin
+/// header, so Microsoft sees the request as a native client — which is what
+/// the app is registered as.
+#[tauri::command]
+async fn exchange_oidc_code(
+    token_endpoint: String,
+    client_id: String,
+    redirect_uri: String,
+    code: String,
+    code_verifier: String,
+) -> Result<OidcTokenResponse, String> {
+    let mut form: HashMap<&str, String> = HashMap::new();
+    form.insert("grant_type", "authorization_code".to_string());
+    form.insert("client_id", client_id);
+    form.insert("redirect_uri", redirect_uri);
+    form.insert("code", code);
+    form.insert("code_verifier", code_verifier);
+
+    let resp = reqwest::Client::new()
+        .post(&token_endpoint)
+        .form(&form)
+        .send()
+        .await
+        .map_err(|e| format!("token endpoint unreachable: {e}"))?;
+
+    let status = resp.status();
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("token endpoint body read failed: {e}"))?;
+    if !status.is_success() {
+        return Err(format!(
+            "token endpoint returned {status}: {}",
+            body.chars().take(500).collect::<String>()
+        ));
+    }
+    serde_json::from_str::<OidcTokenResponse>(&body)
+        .map_err(|e| format!("token endpoint response not parseable as OIDC tokens: {e}"))
+}
+
 #[tauri::command]
 fn get_edge_config() -> EdgeConfig {
     EdgeConfig {
@@ -59,16 +114,42 @@ fn get_edge_config() -> EdgeConfig {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // single-instance MUST be registered first. With the ``deep-link``
+        // feature enabled, it forwards any deep-link URL passed to the
+        // second invocation back to the running instance via the deep-link
+        // plugin's on_open_url callback. Without this, every callback
+        // ``lehen://...`` from the system browser spawns a NEW Edge process
+        // instead of waking the one the user is already signed into.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_deep_link::init())
         .invoke_handler(tauri::generate_handler![
             get_edge_config,
+            exchange_oidc_code,
             tokens::store_token,
             tokens::get_token,
             tokens::delete_token,
         ])
         .setup(|app| {
+            // Register the ``lehen://`` scheme with the OS at runtime. On
+            // production builds the MSI installer handles this via the
+            // bundle manifest; in ``tauri dev`` we have to do it ourselves
+            // or every callback fails with "scheme has no registered
+            // handler". macOS handles the scheme via Info.plist so the
+            // call is a no-op there; Windows + Linux need this.
+            #[cfg(any(windows, target_os = "linux"))]
+            {
+                if let Err(e) = app.deep_link().register_all() {
+                    eprintln!("warning: deep-link scheme registration failed: {e}");
+                }
+            }
+
             // Forward any incoming deep-link URL to the frontend as a Tauri
             // event. The frontend parses the URL and dispatches based on
             // the path (auth/callback vs. oauth/callback). Using the

@@ -41,7 +41,17 @@ class IdentityProvider(Protocol):
 
     @property
     def issuer(self) -> str:
-        """Expected ``iss`` claim. Used by ``decode_and_verify``."""
+        """Canonical ``iss`` for OIDC discovery + admin/SPA bootstrap. The
+        token-validation path goes through ``accepted_issuers`` instead so
+        IdPs that issue tokens with multiple legitimate issuer formats
+        (e.g. Entra v1 vs. v2 access tokens) all work."""
+
+    @property
+    def accepted_issuers(self) -> list[str]:
+        """Issuer claim values the validator accepts on incoming tokens.
+        Defaults to ``[self.issuer]``; Entra overrides to also accept the
+        v1 ``sts.windows.net`` form, which Microsoft emits when the app's
+        ``accessTokenAcceptedVersion`` is unset (defaults to 1)."""
 
     @property
     def audience(self) -> str:
@@ -96,6 +106,11 @@ class KeycloakIdentityProvider:
     @property
     def issuer(self) -> str:
         return self._settings.issuer
+
+    @property
+    def accepted_issuers(self) -> list[str]:
+        # Keycloak only ever issues with one canonical issuer.
+        return [self._settings.issuer]
 
     @property
     def audience(self) -> str:
@@ -160,6 +175,21 @@ class EntraIdentityProvider:
     @property
     def issuer(self) -> str:
         return self._settings.issuer
+
+    @property
+    def accepted_issuers(self) -> list[str]:
+        # Microsoft v2 token endpoint can emit either issuer format depending
+        # on the app's manifest ``accessTokenAcceptedVersion``:
+        #   - 2 → ``https://login.microsoftonline.com/{tid}/v2.0`` (v2.0)
+        #   - 1 (or unset, default for older app registrations) →
+        #     ``https://sts.windows.net/{tid}/`` (v1 access token format)
+        # Both come from the same tenant and same JWKS — accepting both
+        # lets the Hub work against any Entra app config without requiring
+        # operators to remember to flip the manifest.
+        return [
+            self._settings.issuer,
+            f"https://sts.windows.net/{self._settings.tenant_id}/",
+        ]
 
     @property
     def audience(self) -> str:

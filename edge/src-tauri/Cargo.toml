@@ -18,6 +18,9 @@ tauri = { version = "2", features = [] }
 tauri-plugin-deep-link = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-http = "2"
+# Required on Windows + Linux so a deep-link invocation forwards the URL
+# to the already-running Edge instead of spawning a second process.
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 keyring = "3"
